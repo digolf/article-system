@@ -4,147 +4,145 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateUserDto } from './dto/create-user.dto';
+import { CreateUserDto, UserRole } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
-import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createUserDto: CreateUserDto) {
-    try {
-      const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+  /**
+   * Cria um novo usuário
+   * Se requestingUser for admin, pode definir qualquer role
+   * Se não for admin (registro público), cria como 'reader'
+   */
+  async create(createUserDto: CreateUserDto, requestingUser?: any) {
+    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-      const user = await this.prisma.user.create({
-        data: {
-          name: createUserDto.name,
-          email: createUserDto.email,
-          password: hashedPassword,
-        },
-      });
+    // Verificar se o usuário que está criando é admin
+    const isAdmin = requestingUser?.role === 'admin';
 
-      if (
-        createUserDto.permissionIds &&
-        createUserDto.permissionIds.length > 0
-      ) {
-        for (const permissionId of createUserDto.permissionIds) {
-          await this.prisma.userPermission.create({
-            data: { userId: user.id, permissionId },
-          });
-        }
-      }
-
-      const createdUser = await this.prisma.user.findUnique({
-        where: { id: user.id },
-        include: { permissions: { include: { permission: true } } },
-      });
-
-      // Remove password from response
-      const { password: _, ...userWithoutPassword } = createdUser;
-      return userWithoutPassword;
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('Email já está em uso');
-      }
-      throw error;
+    // Determinar role: se admin, usar role fornecida; senão, forçar 'reader'
+    let role = UserRole.READER;
+    if (isAdmin && createUserDto.role) {
+      role = createUserDto.role;
     }
+
+    const user = await this.prisma.user.create({
+      data: {
+        name: createUserDto.name,
+        email: createUserDto.email,
+        password: hashedPassword,
+        role: role,
+      },
+    });
+
+    // Buscar usuário criado sem a senha
+    const createdUser = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        password: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!createdUser) {
+      throw new NotFoundException('Usuário não encontrado após criação');
+    }
+
+    const { password: _, ...userWithoutPassword } = createdUser;
+    return userWithoutPassword;
   }
 
   async findAll() {
     const users = await this.prisma.user.findMany({
-      include: { permissions: { include: { permission: true } } },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
       orderBy: { createdAt: 'desc' },
     });
 
-    // Remove password from all users
-    return users.map(({ password: _, ...user }) => user);
+    return users;
   }
 
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      include: { permissions: { include: { permission: true } } },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
     if (!user) throw new NotFoundException('Usuário não encontrado');
 
-    // Remove password from response
-    const { password: _, ...userWithoutPassword } = user;
-    return userWithoutPassword;
+    return user;
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    try {
-      const dataToUpdate: any = {};
+    const dataToUpdate: any = {};
 
-      if (updateUserDto.name) dataToUpdate.name = updateUserDto.name;
-      if (updateUserDto.email) dataToUpdate.email = updateUserDto.email;
-      if (updateUserDto.password) {
-        dataToUpdate.password = await bcrypt.hash(updateUserDto.password, 10);
-      }
-
-      await this.prisma.user.update({ where: { id }, data: dataToUpdate });
-
-      if (
-        updateUserDto.permissionIds &&
-        Array.isArray(updateUserDto.permissionIds)
-      ) {
-        await this.prisma.userPermission.deleteMany({ where: { userId: id } });
-        for (const permissionId of updateUserDto.permissionIds) {
-          await this.prisma.userPermission.create({
-            data: { userId: id, permissionId },
-          });
-        }
-      }
-
-      const updatedUser = await this.prisma.user.findUnique({
-        where: { id },
-        include: { permissions: { include: { permission: true } } },
-      });
-
-      // Remove password from response
-      const { password: _, ...userWithoutPassword } = updatedUser;
-      return userWithoutPassword;
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('Email já está em uso');
-      }
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2025'
-      ) {
-        throw new NotFoundException('Usuário não encontrado');
-      }
-      throw error;
+    if (updateUserDto.name) dataToUpdate.name = updateUserDto.name;
+    if (updateUserDto.email) dataToUpdate.email = updateUserDto.email;
+    if (updateUserDto.password) {
+      dataToUpdate.password = await bcrypt.hash(updateUserDto.password, 10);
     }
+    if (updateUserDto.role) dataToUpdate.role = updateUserDto.role;
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id },
+      data: dataToUpdate,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        password: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!updatedUser) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = updatedUser;
+    return userWithoutPassword;
   }
 
   async remove(id: string) {
-    try {
-      await this.prisma.user.delete({ where: { id } });
-      return { message: 'Usuário deletado com sucesso' };
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2025'
-      ) {
-        throw new NotFoundException('Usuário não encontrado');
-      }
-      throw error;
-    }
+    await this.prisma.user.delete({ where: { id } });
+    return { message: 'Usuário deletado com sucesso' };
   }
 
   async findByEmail(email: string) {
-    return this.prisma.user.findUnique({
+    return await this.prisma.user.findUnique({
       where: { email },
-      include: { permissions: { include: { permission: true } } },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        password: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
   }
 }

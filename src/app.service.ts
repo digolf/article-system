@@ -7,14 +7,6 @@ import { Injectable } from '@nestjs/common';
 @Injectable()
 export class AppService {
   /**
-   * Retorna mensagem de boas-vindas
-   * @returns {string} Mensagem de boas-vindas
-   */
-  getHello(): string {
-    return 'Hello World!';
-  }
-
-  /**
    * Verifica o status de saúde da aplicação
    * Usado pelo Docker healthcheck
    *
@@ -25,9 +17,8 @@ export class AppService {
       status: 'ok',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      environment: process.env.NODE_ENV || 'development',
-      version: process.env.npm_package_version || '1.0.0',
-      database: 'connected', // Pode ser expandido para verificar conexão real
+      environment: process.env.NODE_ENV,
+      version: process.env.npm_package_version,
     };
   }
 }

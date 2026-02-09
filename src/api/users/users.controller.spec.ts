@@ -76,32 +76,39 @@ describe('UsersController', () => {
     expect(controller).toBeDefined();
   });
 
-  describe('register', () => {
+  describe('create', () => {
     const createUserDto: CreateUserDto = {
       name: 'John Doe',
       email: 'john@example.com',
       password: 'password123',
     };
 
+    const mockRequest = {
+      user: null,
+    };
+
     it('should create a new user', async () => {
       mockUsersService.create.mockResolvedValue(mockUser);
 
-      const result = await controller.register(createUserDto);
+      const result = await controller.create(createUserDto, mockRequest as any);
 
-      expect(usersService.create).toHaveBeenCalledWith(createUserDto);
+      expect(usersService.create).toHaveBeenCalledWith(createUserDto, null);
       expect(result).toEqual(mockUser);
     });
 
-    it('should create a user with permissions', async () => {
+    it('should create a user with permissions when admin', async () => {
       const createUserDtoWithPerms = {
         ...createUserDto,
         permissionIds: ['perm-1', 'perm-2'],
       };
+      const adminRequest = {
+        user: { id: 'admin-id', permissions: [{ permission: { name: 'admin' } }] },
+      };
       mockUsersService.create.mockResolvedValue(mockUser);
 
-      const result = await controller.register(createUserDtoWithPerms);
+      const result = await controller.create(createUserDtoWithPerms, adminRequest as any);
 
-      expect(usersService.create).toHaveBeenCalledWith(createUserDtoWithPerms);
+      expect(usersService.create).toHaveBeenCalledWith(createUserDtoWithPerms, adminRequest.user);
       expect(result).toEqual(mockUser);
     });
 
@@ -110,7 +117,7 @@ describe('UsersController', () => {
         new Error('Validation failed'),
       );
 
-      await expect(controller.register(createUserDto)).rejects.toThrow(
+      await expect(controller.create(createUserDto, mockRequest as any)).rejects.toThrow(
         'Validation failed',
       );
     });
@@ -118,7 +125,7 @@ describe('UsersController', () => {
     it('should handle duplicate email errors', async () => {
       mockUsersService.create.mockRejectedValue(new Error('Email já em uso'));
 
-      await expect(controller.register(createUserDto)).rejects.toThrow(
+      await expect(controller.create(createUserDto, mockRequest as any)).rejects.toThrow(
         'Email já em uso',
       );
     });

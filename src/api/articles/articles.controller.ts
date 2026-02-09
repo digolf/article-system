@@ -22,24 +22,23 @@ import {
 import { ArticlesService } from './articles.service';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
-import { JwtAuthGuard } from '../../auth/guards';
-import { PermissionsGuard } from '../../auth/guards/roles.guard';
-import { RequirePermissions } from '../../auth/decorators/roles.decorator';
+import { UnifiedAuthGuard } from '../../auth/guards';
+import { RequirePermissions } from '../../auth/decorators';
 
 @ApiTags('Articles')
 @Controller('articles')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(UnifiedAuthGuard)
 @ApiBearerAuth('JWT-auth')
 export class ArticlesController {
   constructor(private readonly articlesService: ArticlesService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequirePermissions('create:articles')
+  @RequirePermissions('admin', 'create:articles')
   @ApiOperation({
     summary: 'Criar novo artigo',
     description:
-      'Cria um novo artigo vinculado ao usuário autenticado (requer permissão create:articles)',
+      'Cria um novo artigo vinculado ao usuário autenticado. Disponível para Admins e Editores.',
   })
   @ApiBody({ type: CreateArticleDto })
   @ApiResponse({
@@ -74,18 +73,18 @@ export class ArticlesController {
   })
   @ApiResponse({
     status: 403,
-    description: 'Sem permissão para criar artigos',
+    description: 'Sem permissão para criar artigos (apenas Admins e Editores)',
   })
   async create(@Body() createArticleDto: CreateArticleDto, @Request() req) {
-    return this.articlesService.create(createArticleDto, req.user.userId);
+    return await this.articlesService.create(createArticleDto, req.user.userId);
   }
 
   @Get()
-  @RequirePermissions('read:articles')
+  @RequirePermissions('admin', 'read:articles')
   @ApiOperation({
     summary: 'Listar todos os artigos',
     description:
-      'Retorna lista de todos os artigos (requer permissão read:articles)',
+      'Retorna lista de todos os artigos. Disponível para todos os usuários autenticados.',
   })
   @ApiResponse({
     status: 200,
@@ -115,18 +114,18 @@ export class ArticlesController {
   })
   @ApiResponse({
     status: 403,
-    description: 'Sem permissão para ler artigos',
+    description: 'Sem permissão para ler artigos (requer autenticação)',
   })
   async findAll() {
-    return this.articlesService.findAll();
+    return await this.articlesService.findAll();
   }
 
   @Get(':id')
-  @RequirePermissions('read:articles')
+  @RequirePermissions('admin', 'read:articles')
   @ApiOperation({
     summary: 'Buscar artigo por ID',
     description:
-      'Retorna dados de um artigo específico (requer permissão read:articles)',
+      'Retorna dados de um artigo específico. Disponível para todos os usuários autenticados.',
   })
   @ApiParam({
     name: 'id',
@@ -159,7 +158,7 @@ export class ArticlesController {
   })
   @ApiResponse({
     status: 403,
-    description: 'Sem permissão para ler artigos',
+    description: 'Sem permissão para ler artigos (requer autenticação)',
   })
   @ApiResponse({
     status: 404,
@@ -173,15 +172,15 @@ export class ArticlesController {
     },
   })
   async findOne(@Param('id') id: string) {
-    return this.articlesService.findOne(id);
+    return await this.articlesService.findOne(id);
   }
 
   @Put(':id')
-  @RequirePermissions('update:articles')
+  @RequirePermissions('admin', 'update:articles')
   @ApiOperation({
     summary: 'Atualizar artigo',
     description:
-      'Atualiza um artigo específico. Usuários com permissão update:articles podem atualizar apenas seus próprios artigos. Admins podem atualizar qualquer artigo.',
+      'Atualiza um artigo específico. Editores podem atualizar apenas seus próprios artigos. Admins podem atualizar qualquer artigo.',
   })
   @ApiParam({
     name: 'id',
@@ -210,7 +209,8 @@ export class ArticlesController {
   })
   @ApiResponse({
     status: 403,
-    description: 'Sem permissão para atualizar este artigo',
+    description:
+      'Sem permissão para atualizar artigos (apenas Admins e Editores). Editores só podem atualizar seus próprios artigos.',
     schema: {
       example: {
         statusCode: 403,
@@ -228,16 +228,21 @@ export class ArticlesController {
     @Body() updateArticleDto: UpdateArticleDto,
     @Request() req,
   ) {
-    return this.articlesService.update(id, updateArticleDto, req.user.userId);
+    return await this.articlesService.update(
+      id,
+      updateArticleDto,
+      req.user.userId,
+      req.user.role,
+    );
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermissions('delete:articles')
+  @RequirePermissions('admin', 'delete:articles')
   @ApiOperation({
     summary: 'Deletar artigo',
     description:
-      'Remove um artigo do sistema. Usuários com permissão delete:articles podem deletar apenas seus próprios artigos. Admins podem deletar qualquer artigo.',
+      'Remove um artigo do sistema. Editores podem deletar apenas seus próprios artigos. Admins podem deletar qualquer artigo.',
   })
   @ApiParam({
     name: 'id',
@@ -254,7 +259,8 @@ export class ArticlesController {
   })
   @ApiResponse({
     status: 403,
-    description: 'Sem permissão para deletar este artigo',
+    description:
+      'Sem permissão para deletar artigos (apenas Admins e Editores). Editores só podem deletar seus próprios artigos.',
     schema: {
       example: {
         statusCode: 403,
@@ -268,6 +274,6 @@ export class ArticlesController {
     description: 'Artigo não encontrado',
   })
   async remove(@Param('id') id: string, @Request() req) {
-    return this.articlesService.remove(id, req.user.userId);
+    return await this.articlesService.remove(id, req.user.userId, req.user.role);
   }
 }

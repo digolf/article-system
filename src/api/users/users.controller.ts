@@ -9,6 +9,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -23,7 +24,8 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthService } from '../../auth/auth.service';
-import { JwtAuthGuard } from '../../auth/guards';
+import { UnifiedAuthGuard } from '../../auth/guards';
+import { RequirePermissions, OptionalAuth } from '../../auth/decorators';
 
 @ApiTags('Users')
 @Controller('users')
@@ -33,14 +35,73 @@ export class UsersController {
     private readonly authService: AuthService,
   ) {}
 
-  @Post('register')
+  @ApiTags('Users')
+  @Post()
+  @UseGuards(UnifiedAuthGuard)
+  @OptionalAuth()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Registrar novo usuário',
+    summary: 'Criar novo usuário',
     description:
-      'Cria um novo usuário no sistema com nome, email, senha e permissões opcionais',
+      '**Rota híbrida que funciona de 2 formas:**\n\n' +
+      '1️⃣ **Sem token (Público - Auto-cadastro)**\n' +
+      '   - Qualquer pessoa pode criar uma conta\n' +
+      '   - Role é IGNORADA por segurança\n' +
+      '   - Sempre cria com role "reader" (apenas leitura)\n\n' +
+      '2️⃣ **Com token admin (Criar usuário customizado)**\n' +
+      '   - Requer autenticação com role "admin"\n' +
+      '   - Pode especificar role: "admin", "editor" ou "reader"\n' +
+      '   - Admin pode criar outros admins\n\n' +
+      '**Roles disponíveis:**\n' +
+      '- `admin` - Acesso total (gerenciar usuários + artigos)\n' +
+      '- `editor` - Criar e editar artigos (apenas próprios)\n' +
+      '- `reader` - Apenas leitura de artigos',
   })
-  @ApiBody({ type: CreateUserDto })
+  @ApiBody({
+    type: CreateUserDto,
+    examples: {
+      'public-register': {
+        summary: 'Auto-cadastro público (SEM TOKEN)',
+        description:
+          'Cria usuário com role "reader" automaticamente. Campo "role" é ignorado.',
+        value: {
+          name: 'João Silva',
+          email: 'joao@example.com',
+          password: 'senha123',
+        },
+      },
+      'admin-create-admin': {
+        summary: 'Admin criar outro admin (COM TOKEN)',
+        description: 'Requer token de admin no header Authorization',
+        value: {
+          name: 'Novo Admin',
+          email: 'admin@example.com',
+          password: 'senha123',
+          role: 'admin',
+        },
+      },
+      'admin-create-editor': {
+        summary: 'Admin criar editor (COM TOKEN)',
+        description: 'Requer token de admin no header Authorization',
+        value: {
+          name: 'Editor User',
+          email: 'editor@example.com',
+          password: 'senha123',
+          role: 'editor',
+        },
+      },
+      'admin-create-reader': {
+        summary: 'Admin criar usuário reader (COM TOKEN)',
+        description: 'Requer token de admin no header Authorization',
+        value: {
+          name: 'Reader User',
+          email: 'reader@example.com',
+          password: 'senha123',
+          role: 'reader',
+        },
+      },
+    },
+  })
   @ApiResponse({
     status: 201,
     description: 'Usuário criado com sucesso',
@@ -48,10 +109,19 @@ export class UsersController {
       example: {
         id: '123e4567-e89b-12d3-a456-426614174000',
         name: 'João Silva',
-        email: 'joao.silva@email.com',
-        createdAt: '2026-02-06T14:23:38.000Z',
-        updatedAt: '2026-02-06T14:23:38.000Z',
-        permissions: [],
+        email: 'joao@example.com',
+        createdAt: '2026-02-07T14:30:00.000Z',
+        updatedAt: '2026-02-07T14:30:00.000Z',
+        permissions: [
+          {
+            id: 'perm-123',
+            permission: {
+              id: 'xyz-789',
+              name: 'read:articles',
+              description: 'Pode ler artigos',
+            },
+          },
+        ],
       },
     },
   })
@@ -77,10 +147,12 @@ export class UsersController {
       },
     },
   })
-  async register(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
+  @ApiBearerAuth('JWT-auth')
+  async create(@Body() createUserDto: CreateUserDto, @Req() req: any) {
+    return await this.usersService.create(createUserDto, req.user);
   }
 
+  @ApiTags('Auth')
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -115,16 +187,17 @@ export class UsersController {
     },
   })
   async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto.email, loginDto.password);
+    return await this.authService.login(loginDto.email, loginDto.password);
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(UnifiedAuthGuard)
+  @RequirePermissions('admin')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Listar todos os usuários',
     description:
-      'Retorna lista de todos os usuários cadastrados (requer autenticação)',
+      'Retorna lista de todos os usuários cadastrados (requer permissão de admin)',
   })
   @ApiResponse({
     status: 200,
@@ -160,16 +233,33 @@ export class UsersController {
       },
     },
   })
+  @ApiResponse({
+    status: 403,
+    description: 'Sem permissão',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'Você não tem permissão para acessar este recurso',
+        error: 'Forbidden',
+      },
+    },
+  })
   async findAll() {
-    return this.usersService.findAll();
+    try {
+      return await this.usersService.findAll();
+    } catch (error) {
+      throw error;
+    }
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(UnifiedAuthGuard)
+  @RequirePermissions('admin')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Buscar usuário por ID',
-    description: 'Retorna dados de um usuário específico (requer autenticação)',
+    description:
+      'Retorna dados de um usuário específico (requer permissão de admin)',
   })
   @ApiParam({
     name: 'id',
@@ -195,6 +285,17 @@ export class UsersController {
     description: 'Não autenticado',
   })
   @ApiResponse({
+    status: 403,
+    description: 'Sem permissão',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'Você não tem permissão para acessar este recurso',
+        error: 'Forbidden',
+      },
+    },
+  })
+  @ApiResponse({
     status: 404,
     description: 'Usuário não encontrado',
     schema: {
@@ -206,16 +307,21 @@ export class UsersController {
     },
   })
   async findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+    try {
+      return await this.usersService.findOne(id);
+    } catch (error) {
+      throw error;
+    }
   }
 
   @Put(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(UnifiedAuthGuard)
+  @RequirePermissions('admin')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Atualizar usuário',
     description:
-      'Atualiza dados de um usuário específico (requer autenticação)',
+      'Atualiza dados de um usuário específico (requer permissão de admin)',
   })
   @ApiParam({
     name: 'id',
@@ -250,17 +356,21 @@ export class UsersController {
     description: 'Email já está em uso por outro usuário',
   })
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(id, updateUserDto);
+    try {
+      return await this.usersService.update(id, updateUserDto);
+    } catch (error) {
+      throw error;
+    }
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(UnifiedAuthGuard)
+  @RequirePermissions('admin')
   @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Deletar usuário',
-    description:
-      'Remove um usuário do sistema (requer autenticação e permissão delete:users)',
+    description: 'Remove um usuário do sistema (requer permissão de admin)',
   })
   @ApiParam({
     name: 'id',
@@ -284,6 +394,11 @@ export class UsersController {
     description: 'Usuário não encontrado',
   })
   async remove(@Param('id') id: string) {
-    return this.usersService.remove(id);
+    try {
+      return await this.usersService.remove(id);
+    } catch (error) {
+      throw error;
+    }
   }
 }
+

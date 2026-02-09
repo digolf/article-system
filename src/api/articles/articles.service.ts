@@ -12,7 +12,7 @@ export class ArticlesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createArticleDto: CreateArticleDto, authorId: string) {
-    return this.prisma.article.create({
+    return await this.prisma.article.create({
       data: {
         ...createArticleDto,
         authorId,
@@ -26,7 +26,7 @@ export class ArticlesService {
   }
 
   async findAll() {
-    return this.prisma.article.findMany({
+    return await this.prisma.article.findMany({
       include: {
         author: {
           select: { id: true, name: true, email: true },
@@ -53,20 +53,25 @@ export class ArticlesService {
     return article;
   }
 
-  async update(id: string, updateArticleDto: UpdateArticleDto, userId: string) {
+  async update(
+    id: string,
+    updateArticleDto: UpdateArticleDto,
+    userId: string,
+    role: string,
+  ) {
     const article = await this.prisma.article.findUnique({ where: { id } });
 
     if (!article) {
       throw new NotFoundException('Artigo não encontrado');
     }
 
-    if (article.authorId !== userId) {
+    if (article.authorId !== userId && role !== 'admin') {
       throw new ForbiddenException(
         'Você não tem permissão para editar este artigo',
       );
     }
 
-    return this.prisma.article.update({
+    return await this.prisma.article.update({
       where: { id },
       data: updateArticleDto,
       include: {
@@ -77,14 +82,14 @@ export class ArticlesService {
     });
   }
 
-  async remove(id: string, userId: string) {
+  async remove(id: string, userId: string, userRole: string) {
     const article = await this.prisma.article.findUnique({ where: { id } });
 
     if (!article) {
       throw new NotFoundException('Artigo não encontrado');
     }
 
-    if (article.authorId !== userId) {
+    if (article.authorId !== userId && userRole !== 'admin') {
       throw new ForbiddenException(
         'Você não tem permissão para deletar este artigo',
       );

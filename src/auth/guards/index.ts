@@ -1,2 +1,2 @@
-export * from './jwt-auth.guard';
-export * from './roles.guard';
+// Arquivo unificado com todos os guards JWT
+export * from './jwt.guard';

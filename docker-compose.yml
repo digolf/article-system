@@ -22,7 +22,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: article-system-app
     restart: unless-stopped
     ports:
@@ -32,9 +32,14 @@ services:
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
       JWT_EXPIRATION: 24h
       PORT: 3000
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
     networks:
       - article-network
     healthcheck:

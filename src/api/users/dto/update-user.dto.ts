@@ -6,8 +6,9 @@ import {
   IsString,
   MinLength,
   IsEmail,
-  IsArray,
+  IsEnum,
 } from 'class-validator';
+import { UserRole } from './create-user.dto';
 
 /**
  * DTO para atualização de usuário
@@ -43,12 +44,13 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   password?: string;
 
   @ApiPropertyOptional({
-    description: 'Array de IDs das permissões a serem atribuídas ao usuário',
-    example: ['permission-id-1', 'permission-id-2'],
-    isArray: true,
-    type: [String],
+    description: 'Role do usuário (admin, editor, reader)',
+    example: 'editor',
+    enum: UserRole,
   })
-  @IsArray({ message: 'Permissões devem ser um array' })
+  @IsEnum(UserRole, {
+    message: 'Role deve ser: admin, editor ou reader',
+  })
   @IsOptional()
-  permissionIds?: string[];
+  role?: UserRole;
 }

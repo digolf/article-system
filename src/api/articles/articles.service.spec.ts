@@ -216,6 +216,7 @@ describe('ArticlesService', () => {
         'article-id-123',
         updateArticleDto,
         'author-id-123',
+        'editor',
       );
 
       expect(mockPrismaService.article.findUnique).toHaveBeenCalledWith({
@@ -243,6 +244,7 @@ describe('ArticlesService', () => {
         'article-id-123',
         updateDto,
         'author-id-123',
+        'editor',
       );
 
       expect(result.content).toBe('Updated content');
@@ -305,6 +307,31 @@ describe('ArticlesService', () => {
       expect(result.content).toBe('New Content');
       expect(result.published).toBe(true);
     });
+
+    it('should allow admin to update any article', async () => {
+      mockPrismaService.article.findUnique.mockResolvedValue(mockArticle);
+      const updatedArticle = { ...mockArticle, title: 'Updated by Admin' };
+      mockPrismaService.article.update.mockResolvedValue(updatedArticle);
+
+      const result = await service.update(
+        'article-id-123',
+        { title: 'Updated by Admin' },
+        'different-user-id',
+        'admin',
+      );
+
+      expect(result.title).toBe('Updated by Admin');
+    });
+
+    it('should handle errors in update', async () => {
+      mockPrismaService.article.findUnique.mockRejectedValue(
+        new Error('Database error'),
+      );
+
+      await expect(
+        service.update('article-id-123', updateArticleDto, 'author-id-123', 'editor'),
+      ).rejects.toThrow('Database error');
+    });
   });
 
   describe('remove', () => {
@@ -312,7 +339,7 @@ describe('ArticlesService', () => {
       mockPrismaService.article.findUnique.mockResolvedValue(mockArticle);
       mockPrismaService.article.delete.mockResolvedValue(mockArticle);
 
-      const result = await service.remove('article-id-123', 'author-id-123');
+      const result = await service.remove('article-id-123', 'author-id-123', 'editor');
 
       expect(mockPrismaService.article.findUnique).toHaveBeenCalledWith({
         where: { id: 'article-id-123' },
@@ -327,10 +354,10 @@ describe('ArticlesService', () => {
       mockPrismaService.article.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.remove('non-existent-id', 'author-id-123'),
+        service.remove('non-existent-id', 'author-id-123', 'editor'),
       ).rejects.toThrow(NotFoundException);
       await expect(
-        service.remove('non-existent-id', 'author-id-123'),
+        service.remove('non-existent-id', 'author-id-123', 'editor'),
       ).rejects.toThrow('Artigo não encontrado');
     });
 
@@ -338,10 +365,10 @@ describe('ArticlesService', () => {
       mockPrismaService.article.findUnique.mockResolvedValue(mockArticle);
 
       await expect(
-        service.remove('article-id-123', 'different-user-id'),
+        service.remove('article-id-123', 'different-user-id', 'editor'),
       ).rejects.toThrow(ForbiddenException);
       await expect(
-        service.remove('article-id-123', 'different-user-id'),
+        service.remove('article-id-123', 'different-user-id', 'editor'),
       ).rejects.toThrow('Você não tem permissão para deletar este artigo');
     });
 
@@ -352,7 +379,26 @@ describe('ArticlesService', () => {
       );
 
       await expect(
-        service.remove('article-id-123', 'author-id-123'),
+        service.remove('article-id-123', 'author-id-123', 'editor'),
+      ).rejects.toThrow('Database error');
+    });
+
+    it('should allow admin to delete any article', async () => {
+      mockPrismaService.article.findUnique.mockResolvedValue(mockArticle);
+      mockPrismaService.article.delete.mockResolvedValue(mockArticle);
+
+      const result = await service.remove('article-id-123', 'different-user-id', 'admin');
+
+      expect(result).toEqual({ message: 'Artigo deletado com sucesso' });
+    });
+
+    it('should handle errors in remove', async () => {
+      mockPrismaService.article.findUnique.mockRejectedValue(
+        new Error('Database error'),
+      );
+
+      await expect(
+        service.remove('article-id-123', 'author-id-123', 'editor'),
       ).rejects.toThrow('Database error');
     });
   });

@@ -37,15 +37,14 @@
 ### Funcionalidades
 
 - Sistema completo de autenticação JWT  
-- Controle granular de permissões (8 permissões)  
-- CRUD completo de usuários e artigos  
-- Verificação de ownership (usuários editam apenas seus recursos)  
-- Seed automático com usuário root  
-- Documentação Swagger interativa  
-- 176 testes automatizados (100% passing)  
+- CRUD completo de usuários (apenas admins) e artigos  
+- Verificação de ownership (usuários editores editam apenas seus recursos)  
+- Seed automático com usuários (root, editor e reader)  
+- Documentação Swagger
+- Testes automatizados  
 - Validação de variáveis de ambiente  
 - Health check endpoints  
-- Containerização completa com Docker  
+- Containerização completa com Docker
 
 ---
 
@@ -56,7 +55,7 @@
 - **Docker** e **Docker Compose**
 - Ou: **Node.js 20+** e **PostgreSQL 16+**
 
-### Instalação com Docker (Recomendado)
+### Instalação com Docker
 
 ```bash
 # 1. Clone o repositório
@@ -79,29 +78,7 @@ docker compose up --build
 **Credenciais do usuário root:**
 - Email: `root@root.com`
 - Senha: `root123`
-- Permissões: Todas as 8
-
-### Desenvolvimento Local
-
-```bash
-# 1. Instalar dependências
-npm install
-
-# 2. Configurar variáveis de ambiente
-cp .env.example .env
-
-# 3. Executar migrations
-npx prisma migrate deploy
-
-# 4. Gerar Prisma Client
-npx prisma generate
-
-# 5. Executar seed (opcional)
-npm run prisma:seed
-
-# 6. Iniciar em modo desenvolvimento
-npm run start:dev
-```
+- Permissões: Todas
 
 ### Variáveis de Ambiente
 
@@ -123,95 +100,112 @@ NODE_ENV="development"
 
 Se alguma variável obrigatória estiver faltando, o sistema exibirá erro na inicialização.
 
----
+## Primeiros Passos - Criando um Admin
 
-## Arquitetura
+Após executar o seed, você terá um usuário root admin:
 
-### Estrutura de Diretórios
-
+**Credenciais do Root:**
 ```
-src/
-├── api/                      # Módulos da API
-│   ├── users/               # Gerenciamento de usuários
-│   │   ├── dto/            # Data Transfer Objects
-│   │   ├── users.controller.ts
-│   │   ├── users.service.ts
-│   │   └── users.module.ts
-│   └── articles/           # Gerenciamento de artigos
-│       ├── dto/
-│       ├── articles.controller.ts
-│       ├── articles.service.ts
-│       └── articles.module.ts
-├── auth/                    # Autenticação e autorização
-│   ├── guards/             # Guards de autenticação
-│   │   ├── jwt-auth.guard.ts
-│   │   └── roles.guard.ts
-│   ├── strategies/         # Estratégias de autenticação
-│   │   └── jwt.strategy.ts
-│   ├── decorators/         # Decorators customizados
-│   │   └── roles.decorator.ts
-│   ├── auth.controller.ts
-│   ├── auth.service.ts
-│   └── auth.module.ts
-├── config/                  # Configurações
-│   └── env-validation.service.ts
-├── prisma/                  # Prisma ORM
-│   └── prisma.service.ts
-├── app.module.ts           # Módulo raiz
-└── main.ts                 # Entry point
+Email: root@root.com
+Senha: root123
+Permissão: admin
+```
 
-prisma/
-├── schema.prisma           # Schema do banco
-├── migrations/             # Migrations SQL
-└── seed/                   # Seed scripts
-    └── seed.ts
+**Para criar um novo usuário admin:**
 
-test/                       # Testes E2E
-├── health.e2e-spec.ts
-├── auth.e2e-spec.ts
-├── users.e2e-spec.ts
-└── articles.e2e-spec.ts
+1. **Faça login como root:**
+   ```bash
+   curl -X POST http://localhost:3000/users/login \
+     -H "Content-Type: application/json" \
+     -d '{"email":"root@root.com","password":"root123"}'
+   ```
+
+2. **Crie o novo admin:**
+   ```bash
+   curl -X POST http://localhost:3000/users \
+     -H "Authorization: Bearer SEU_TOKEN_AQUI" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "Novo Admin",
+       "email": "novoadmin@example.com",
+       "password": "senha123",
+       "role": "admin"
+     }'
+   ```
+
+**Roles disponíveis:**
+- `"admin"` - Acesso total (gerenciar usuários e artigos)
+- `"editor"` - Criar e editar artigos
+- `"reader"` - Apenas leitura de artigos
+
+**Auto-cadastro (sem token):**
+Qualquer pessoa pode se cadastrar sem token. O sistema automaticamente cria com role "reader":
+```bash
+curl -X POST http://localhost:3000/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "João Silva",
+    "email": "joao@example.com",
+    "password": "senha123"
+  }'
 ```
 
 ### Modelo de Dados
 
+O sistema utiliza **Prisma ORM** com **PostgreSQL** como banco de dados.
+
 #### User (Usuário)
-```typescript
-{
-  id: string              // UUID
-  name: string            // Nome completo
-  email: string           // Email único
-  password: string        // Hash bcrypt
-  createdAt: DateTime
-  updatedAt: DateTime
-  permissions: UserPermission[]  // Relação N:N
-  articles: Article[]            // Artigos criados
+```prisma
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("reader") // admin, editor, reader
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  articles  Article[]
+
+  @@map("users")
 }
 ```
 
-#### Permission (Permissão)
-```typescript
-{
-  id: string              // UUID
-  name: string            // Nome único (ex: "read:users")
-  description: string     // Descrição
-  createdAt: DateTime
-  users: UserPermission[] // Relação N:N
-}
-```
+**Campos:**
+- `id`: UUID único 
+- `name`: Nome completo do usuário
+- `email`: Email único para login
+- `password`: Hash bcrypt da senha
+- `role`: Papel do usuário (admin, editor, reader) - padrão: "reader"
+- `createdAt`: Data de criação (automática)
+- `updatedAt`: Data da última atualização (automática)
+- `articles`: Relação com artigos criados pelo usuário
 
 #### Article (Artigo)
-```typescript
-{
-  id: string              // UUID
-  title: string           // Título
-  content: string         // Conteúdo
-  authorId: string        // FK para User
-  createdAt: DateTime
-  updatedAt: DateTime
-  author: User            // Relação 1:N
+```prisma
+model Article {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("articles")
 }
 ```
+
+**Campos:**
+- `id`: UUID único (gerado automaticamente)
+- `title`: Título do artigo
+- `content`: Conteúdo completo do artigo
+- `authorId`: ID do usuário autor
+- `author`: Relação com o usuário autor
+- `createdAt`: Data de criação (automática)
+- `updatedAt`: Data da última atualização (automática)
+
+**Comportamento de Deleção:**
+- Ao deletar um usuário, todos os seus artigos são deletados automaticamente (`onDelete: Cascade`)
 
 ---
 
@@ -228,39 +222,78 @@ O sistema usa **JSON Web Tokens (JWT)** para autenticação stateless.
 4. Cliente envia token no header `Authorization: Bearer <token>`
 5. Sistema valida token em cada requisição
 
-**Payload do Token:**
+**Payload do Token (Simplificado):**
 ```json
 {
-  "userId": "uuid",
-  "email": "user@example.com",
-  "permissions": ["read:users", "create:articles", ...]
+  "sub": "user-id-uuid",
+  "role": "admin|editor|user"
 }
 ```
 
 ### Guards
 
-#### JwtAuthGuard
-- Valida presença e validade do JWT
-- Extrai payload e adiciona em `req.user`
-- Usado em todas as rotas protegidas
+O sistema utiliza um **guard unificado** que substitui todos os guards anteriores:
 
-#### PermissionsGuard
-- Valida se usuário tem permissões necessárias
-- Usado com decorator `@RequirePermissions()`
-- Permite bypass se `@Public()` está presente
+#### UnifiedAuthGuard
+Guard único que detecta automaticamente o comportamento baseado nos decorators:
+- **Autenticação obrigatória (padrão)**: Valida presença e validade do JWT
+- **Autenticação opcional**: Com `@OptionalAuth()`, JWT é opcional (se houver token válido, popula `req.user`)
+- **Verificação de permissões**: Com `@RequirePermissions()`, valida permissões após autenticação
+
+**Benefícios da unificação:**
+- 1 guard para todos os casos
+- Menos imports nos controllers
+- Comportamento detectado automaticamente via decorators
+- Manutenção mais simples
+
+**Compatibilidade:**
+Os guards antigos (`JwtAuthGuard`, `OptionalJwtAuthGuard`, `PermissionsGuard`, `JwtPermissionsGuard`) ainda existem como aliases para compatibilidade, mas todos apontam para `UnifiedAuthGuard`.
 
 ### Decorators
 
-#### @RequirePermissions(...permissions)
+#### @OptionalAuth()
+Marca uma rota como autenticação opcional:
 ```typescript
+@UseGuards(UnifiedAuthGuard)
+@OptionalAuth()
+async create() { ... }
+```
+- Se houver token válido, popula `req.user`
+- Se não houver ou for inválido, continua sem erro
+- Usado em rotas híbridas (público + autenticado)
+
+#### @RequirePermissions(...permissions)
+Define permissões necessárias para acessar uma rota:
+```typescript
+@UseGuards(UnifiedAuthGuard)
 @RequirePermissions('create:articles', 'update:articles')
 async createArticle() { ... }
 ```
+- Valida se usuário tem as permissões necessárias
+- Funciona automaticamente com `UnifiedAuthGuard`
+- Usuário precisa ter pelo menos uma das permissões listadas
 
-#### @Public()
+**Exemplos de uso:**
+
 ```typescript
-@Public()  // Não requer autenticação
-async login() { ... }
+// Apenas autenticação obrigatória
+@UseGuards(UnifiedAuthGuard)
+async getProfile() { ... }
+
+// Autenticação opcional
+@UseGuards(UnifiedAuthGuard)
+@OptionalAuth()
+async createUser() { ... }
+
+// Autenticação + permissões
+@UseGuards(UnifiedAuthGuard)
+@RequirePermissions('admin')
+async listUsers() { ... }
+
+// Nível de controller (aplica a todas as rotas)
+@Controller('articles')
+@UseGuards(UnifiedAuthGuard)
+export class ArticlesController { ... }
 ```
 
 ---
@@ -268,11 +301,6 @@ async login() { ... }
 ## 📡 API Endpoints
 
 ### Health Check
-
-```http
-GET /
-```
-Retorna: `"Hello World!"`
 
 ```http
 GET /health
@@ -290,19 +318,49 @@ Retorna:
 
 ### Autenticação
 
-#### Registro de Usuário
+#### Criar Usuário (Público ou Admin)
 
 ```http
-POST /users/register
+POST /users
 Content-Type: application/json
+Authorization: Bearer <token> (opcional - apenas para criar admin/editor)
+```
 
+**Caso 1: Auto-cadastro (sem token)**
+```json
 {
   "name": "João Silva",
   "email": "joao@example.com",
-  "password": "senha123",
-  "permissionIds": ["perm-uuid-1", "perm-uuid-2"]  // Opcional
+  "password": "senha123"
 }
 ```
+Resultado: Usuário criado com role "reader" (apenas leitura)
+
+**Caso 2: Admin cria outro admin (com token admin)**
+```json
+{
+  "name": "Novo Admin",
+  "email": "admin@example.com",
+  "password": "senha123",
+  "role": "admin"
+}
+```
+Resultado: Usuário criado com acesso total
+
+**Caso 3: Admin cria editor (com token admin)**
+```json
+{
+  "name": "Editor",
+  "email": "editor@example.com",
+  "password": "senha123",
+  "role": "editor"
+}
+```
+Resultado: Usuário criado com permissões de editor
+
+**IMPORTANTE:** 
+- Sem token → role é ignorada, sempre cria "reader"
+- Com token admin → pode criar qualquer role
 
 **Resposta 201:**
 ```json
@@ -331,30 +389,88 @@ Content-Type: application/json
 ```json
 {
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
+  "reader": {
     "id": "uuid",
     "name": "João Silva",
     "email": "joao@example.com",
-    "permissions": [...]
+    "role": "editor"
   }
 }
 ```
 
 ### Usuários (Rotas Protegidas)
 
+#### Criar Usuário (Admin)
+```http
+POST /users
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Requer:** `admin` (apenas administradores podem criar usuários)
+
+**Exemplos:**
+
+**Criar usuário admin:**
+```json
+{
+  "name": "Novo Admin",
+  "email": "admin@example.com",
+  "password": "senha123",
+  "role": "admin"
+}
+```
+
+**Criar usuário editor:**
+```json
+{
+  "name": "Editor User",
+  "email": "editor@example.com",
+  "password": "senha123",
+  "role": "editor"
+}
+```
+
+**Criar usuário básico:**
+```json
+{
+  "name": "Basic User",
+  "email": "user@example.com",
+  "password": "senha123",
+  "role": "reader"
+}
+```
+
+**Roles disponíveis:**
+- `admin` - Acesso total ao sistema
+- `editor` - Pode criar/editar/deletar artigos (próprios)
+- `user` - Apenas leitura de artigos
+
+#### Listar Permissões Disponíveis (Avançado)
+```http
+GET /users/permissions
+Authorization: Bearer <token>
+```
+**Requer:** `admin`
+
+**Nota:** Este endpoint é opcional. Use apenas se quiser trabalhar com permissões customizadas ao invés dos roles padrão.
+  ]
+}
+```
+
 #### Listar Usuários
 ```http
 GET /users
 Authorization: Bearer <token>
 ```
-**Requer:** `read:users`
+**Requer:** `admin` (apenas administradores)
 
 #### Buscar Usuário
 ```http
 GET /users/:id
 Authorization: Bearer <token>
 ```
-**Requer:** `read:users`
+**Requer:** `admin` (apenas administradores)
 
 #### Atualizar Usuário
 ```http
@@ -369,14 +485,14 @@ Content-Type: application/json
   "permissionIds": ["uuid1", "uuid2"]
 }
 ```
-**Requer:** `update:users`
+**Requer:** `admin` (apenas administradores)
 
 #### Deletar Usuário
 ```http
 DELETE /users/:id
 Authorization: Bearer <token>
 ```
-**Requer:** `delete:users`  
+**Requer:** `admin` (apenas administradores)
 **Nota:** Deleta em cascata permissões e artigos do usuário
 
 ### Artigos (Rotas Protegidas)
@@ -445,13 +561,16 @@ Authorization: Bearer <token>
 
 ## Sistema de Permissões
 
-### 8 Permissões Disponíveis
+### 9 Permissões Disponíveis
 
-#### Usuários
-- `read:users` - Listar e visualizar usuários
-- `create:users` - Criar novos usuários
-- `update:users` - Atualizar usuários
-- `delete:users` - Deletar usuários
+#### Admin
+- `admin` - **Acesso total ao sistema** (obrigatória para gerenciar usuários)
+
+#### Usuários (Requer permissão `admin`)
+- `read:users` - Listar e visualizar usuários (obsoleto - use `admin`)
+- `create:users` - Criar novos usuários (obsoleto - use `admin`)
+- `update:users` - Atualizar usuários (obsoleto - use `admin`)
+- `delete:users` - Deletar usuários (obsoleto - use `admin`)
 
 #### Artigos
 - `read:articles` - Listar e visualizar artigos
@@ -461,38 +580,55 @@ Authorization: Bearer <token>
 
 ### Perfis de Usuário
 
-#### Admin (8 permissões)
+#### Admin (com permissão `admin`)
 ```
-- Todas as permissões
-- Gerencia usuários e artigos
-- Pode editar/deletar recursos de outros usuários
+- Permissão: admin
+- Gerencia TODOS os usuários (criar, ler, atualizar, deletar)
+- Artigos: Ler, Criar, Editar e Deletar QUALQUER artigo
+- Acesso total ao sistema
 ```
 
 #### Editor (4 permissões)
 ```
 - read:articles
 - create:articles
-- update:articles (apenas próprios)
-- delete:articles (apenas próprios)
+- update:articles (apenas próprios artigos)
+- delete:articles (apenas próprios artigos)
+- NÃO pode gerenciar usuários
 ```
 
-#### Reader (1 permissão)
+#### Reader / Usuário comum (1 permissão)
 ```
-- read:articles
-- Não pode criar, editar ou deletar
+- read:articles (apenas leitura)
+- NÃO pode criar, editar ou deletar artigos
+- NÃO pode gerenciar usuários
 ```
 
-### Regras de Ownership
+### Regras de Autorização
 
-1. **Artigos:**
-   - Autor pode editar/deletar seus próprios artigos
-   - Admin pode editar/deletar qualquer artigo
-   - Outros usuários não podem editar artigos alheios (mesmo com permissão)
+1. **Gerenciamento de Usuários:**
+   - ✅ Apenas usuários com permissão `admin` podem:
+     - Criar usuários (POST /users)
+     - Listar usuários (GET /users)
+     - Ver detalhes de usuário (GET /users/:id)
+     - Atualizar usuários (PUT /users/:id)
+     - Deletar usuários (DELETE /users/:id)
+   - ❌ Usuários sem `admin` recebem **403 Forbidden**
 
-2. **Usuários:**
-   - Apenas quem tem `update:users` pode atualizar
-   - Apenas quem tem `delete:users` pode deletar
-   - Sem restrição de ownership (admin pode gerenciar todos)
+2. **Registro e Login (Público):**
+   - ✅ Qualquer pessoa pode se registrar (POST /users/register)
+   - ✅ Qualquer pessoa pode fazer login (POST /users/login)
+
+3. **Artigos:**
+   - ✅ **Leitura (GET):** Todos os usuários autenticados (admin, editor, user)
+   - ✅ **Criação (POST):** Apenas Admins e Editores
+   - ✅ **Atualização (PUT):**
+     - Editores: apenas seus próprios artigos
+     - Admins: qualquer artigo
+   - ✅ **Exclusão (DELETE):**
+     - Editores: apenas seus próprios artigos
+     - Admins: qualquer artigo
+   - ❌ **Usuários comuns (Reader):** Podem apenas LER artigos, sem criar/editar/deletar
 
 ---
 
@@ -893,6 +1029,298 @@ Este projeto é parte de um teste técnico.
 
 ---
 
+## Sistema de Permissões
+
+### 📋 Visão Geral
+
+O sistema utiliza um modelo de **Role-Based Access Control (RBAC)** simplificado com 3 roles principais:
+
+### 🎭 Roles Disponíveis
+
+#### 1. Admin (Administrador)
+**Permissão:** `admin`
+
+**Pode fazer:**
+- ✅ **Usuários:** Criar, Ler, Atualizar, Deletar TODOS os usuários
+- ✅ **Artigos:** Ler, Criar, Editar e Deletar QUALQUER artigo (independente do autor)
+
+**Uso típico:** Gestores do sistema, super usuários
+
+---
+
+#### 2. Editor
+**Permissões:** `read:articles`, `create:articles`, `update:articles`, `delete:articles`
+
+**Pode fazer:**
+- ✅ **Artigos (Ler):** Visualizar todos os artigos
+- ✅ **Artigos (Criar):** Criar novos artigos
+- ✅ **Artigos (Editar):** Editar apenas seus próprios artigos
+- ✅ **Artigos (Deletar):** Deletar apenas seus próprios artigos
+- ❌ **Usuários:** Não pode gerenciar usuários
+
+**Uso típico:** Autores de conteúdo, criadores de artigos
+
+---
+
+#### 3. Reader (Leitor)
+**Permissão:** `read:articles`
+
+**Pode fazer:**
+- ✅ **Artigos (Ler):** Visualizar todos os artigos
+- ❌ **Artigos (Criar/Editar/Deletar):** Não pode criar, editar ou deletar
+- ❌ **Usuários:** Não pode gerenciar usuários
+
+**Uso típico:** Leitores, consumidores de conteúdo
+
+---
+
+### 📊 Matriz de Permissões
+
+#### Artigos
+
+| Operação | Endpoint | Admin | Editor | Reader |
+|----------|----------|-------|--------|--------|
+| **Listar artigos** | `GET /articles` | ✅ | ✅ | ✅ |
+| **Ver artigo** | `GET /articles/:id` | ✅ | ✅ | ✅ |
+| **Criar artigo** | `POST /articles` | ✅ | ✅ | ❌ |
+| **Editar artigo próprio** | `PUT /articles/:id` | ✅ | ✅ | ❌ |
+| **Editar qualquer artigo** | `PUT /articles/:id` | ✅ | ❌ | ❌ |
+| **Deletar artigo próprio** | `DELETE /articles/:id` | ✅ | ✅ | ❌ |
+| **Deletar qualquer artigo** | `DELETE /articles/:id` | ✅ | ❌ | ❌ |
+
+#### Usuários
+
+| Operação | Endpoint | Admin | Editor | Reader |
+|----------|----------|-------|--------|--------|
+| **Registrar (público)** | `POST /users` (sem token) | ✅ | ✅ | ✅ |
+| **Login** | `POST /users/login` | ✅ | ✅ | ✅ |
+| **Listar usuários** | `GET /users` | ✅ | ❌ | ❌ |
+| **Ver usuário** | `GET /users/:id` | ✅ | ❌ | ❌ |
+| **Criar usuário com role** | `POST /users` (com token) | ✅ | ❌ | ❌ |
+| **Atualizar usuário** | `PUT /users/:id` | ✅ | ❌ | ❌ |
+| **Deletar usuário** | `DELETE /users/:id` | ✅ | ❌ | ❌ |
+
+---
+
+### 🔧 Implementação Técnica
+
+#### Como as permissões são verificadas?
+
+O sistema usa **Guards** e **Decorators**:
+
+```typescript
+// Exemplo: Rota que requer 'admin' OU 'create:articles'
+@Post()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions('admin', 'create:articles')
+async create(@Body() dto: CreateArticleDto) {
+  // Se usuário tem 'admin' OU 'create:articles', acessa esta rota
+}
+```
+
+#### Lógica de verificação
+
+- O decorator `@RequirePermissions()` aceita múltiplas permissões
+- A verificação é feita usando **OR lógico** (`.some()`)
+- **Basta ter UMA das permissões listadas** para acessar a rota
+
+#### Criando usuários com roles
+
+```bash
+# Criar Admin (apenas outro admin pode fazer isso)
+POST /users
+Authorization: Bearer <admin-token>
+{
+  "name": "Admin User",
+  "email": "admin@example.com",
+  "password": "senha123",
+  "role": "admin"
+}
+
+# Criar Editor (apenas admin pode fazer isso)
+POST /users
+Authorization: Bearer <admin-token>
+{
+  "name": "Editor User",
+  "email": "editor@example.com",
+  "password": "senha123",
+  "role": "editor"
+}
+
+# Registro público (sem token, sempre cria como 'reader')
+POST /users
+{
+  "name": "Regular User",
+  "email": "user@example.com",
+  "password": "senha123"
+}
+```
+
+---
+
+### 🚦 Regras de Negócio
+
+#### 1. Ownership (Propriedade)
+
+**Editores só podem editar/deletar seus próprios artigos:**
+
+```typescript
+// No articles.service.ts
+const article = await this.prisma.article.findUnique({ where: { id } });
+
+// Editor tentando editar artigo de outro
+if (article.authorId !== userId && !isAdmin(user)) {
+  throw new ForbiddenException('Você não tem permissão...');
+}
+```
+
+**Admins podem editar/deletar qualquer artigo:**
+
+```typescript
+// Admin bypassa o check de ownership
+const isAdmin = user.role === 'admin';
+```
+
+#### 2. Registro Público vs Admin
+
+- **Sem token:** Qualquer pessoa pode se registrar como `reader` (role padrão)
+- **Com token admin:** Pode criar usuário com qualquer role (`admin`, `editor`, `reader`)
+
+#### 3. JWT Token Simplificado
+
+O token de autenticação contém apenas o essencial:
+
+**Payload JWT:**
+```json
+{
+  "sub": "user-id-123-uuid",
+  "role": "editor"
+}
+```
+
+**Após decode no backend (`req.user`):**
+```typescript
+{
+  userId: "user-id-123-uuid",
+  role: "editor"
+}
+```
+
+**Vantagens:**
+- Token menor e mais rápido
+- Apenas informações essenciais
+- Sem dados sensíveis (como email)
+- Role é verificada diretamente no guard
+
+#### 4. Hierarquia de permissões
+
+```
+admin
+  ↓ (pode tudo)
+  ├── Gerenciar usuários
+  ├── Criar/Editar/Deletar qualquer artigo
+  └── Todas as permissões do sistema
+
+editor
+  ↓ (artigos apenas)
+  ├── Criar artigos
+  ├── Editar próprios artigos
+  ├── Deletar próprios artigos
+  └── Ler todos os artigos
+
+reader
+  ↓ (read-only)
+  └── Ler artigos
+```
+
+---
+
+### 📝 Exemplos de Uso
+
+#### Exemplo 1: Reader tenta criar artigo
+
+```bash
+POST /articles
+Authorization: Bearer <reader-token>
+
+❌ Resposta: 403 Forbidden
+{
+  "statusCode": 403,
+  "message": "Você não tem permissão para acessar este recurso",
+  "error": "Forbidden"
+}
+```
+
+#### Exemplo 2: Editor cria artigo
+
+```bash
+POST /articles
+Authorization: Bearer <editor-token>
+{
+  "title": "Meu Artigo",
+  "content": "Conteúdo..."
+}
+
+✅ Resposta: 201 Created
+{
+  "id": "uuid",
+  "title": "Meu Artigo",
+  "authorId": "editor-id",
+  ...
+}
+```
+
+#### Exemplo 3: Editor tenta editar artigo de outro
+
+```bash
+PUT /articles/outro-autor-id
+Authorization: Bearer <editor-token>
+{
+  "title": "Tentando editar..."
+}
+
+❌ Resposta: 403 Forbidden
+{
+  "statusCode": 403,
+  "message": "Você não tem permissão para atualizar este artigo",
+  "error": "Forbidden"
+}
+```
+
+#### Exemplo 4: Admin edita qualquer artigo
+
+```bash
+PUT /articles/qualquer-id
+Authorization: Bearer <admin-token>
+{
+  "title": "Admin editando..."
+}
+
+✅ Resposta: 200 OK
+{
+  "id": "qualquer-id",
+  "title": "Admin editando...",
+  ...
+}
+```
+
+---
+
+### 🔐 Segurança
+
+#### Boas práticas implementadas:
+
+1. ✅ **JWT Bearer Token** para autenticação
+2. ✅ **Guards** NestJS para proteção de rotas
+3. ✅ **Verificação de ownership** para editores
+4. ✅ **Role-based access control** simplificado
+5. ✅ **Senhas hasheadas** com bcrypt
+6. ✅ **Validação de dados** com class-validator
+7. ✅ **Try-catch** em todos os endpoints
+8. ✅ **Mensagens de erro claras** sem expor informações sensíveis
+
+---
+
 ## Checklist de Funcionalidades
 
 - [x] Autenticação JWT
@@ -911,3 +1339,4 @@ Este projeto é parte de um teste técnico.
 - [x] Documentação completa
 
 **Status:** **PROJETO COMPLETO E PRONTO PARA PRODUÇÃO**
+

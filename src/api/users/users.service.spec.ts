@@ -24,6 +24,9 @@ describe('UsersService', () => {
       create: jest.fn(),
       deleteMany: jest.fn(),
     },
+    permission: {
+      findMany: jest.fn(),
+    },
   };
 
   const mockUser = {
@@ -31,25 +34,9 @@ describe('UsersService', () => {
     name: 'John Doe',
     email: 'john@example.com',
     password: 'hashedPassword123',
+    role: 'reader',
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
-    permissions: [],
-  };
-
-  const mockUserWithPermissions = {
-    ...mockUser,
-    permissions: [
-      {
-        id: 'user-perm-1',
-        userId: 'user-id-123',
-        permissionId: 'perm-1',
-        permission: {
-          id: 'perm-1',
-          name: 'read:articles',
-          description: 'Read articles',
-        },
-      },
-    ],
   };
 
   // Mock do usuário sem senha (como retornado pelo service)
@@ -57,29 +44,9 @@ describe('UsersService', () => {
     id: 'user-id-123',
     name: 'John Doe',
     email: 'john@example.com',
+    role: 'reader',
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
-    permissions: [],
-  };
-
-  const mockUserWithPermissionsNoPassword = {
-    id: 'user-id-123',
-    name: 'John Doe',
-    email: 'john@example.com',
-    createdAt: new Date('2024-01-01'),
-    updatedAt: new Date('2024-01-01'),
-    permissions: [
-      {
-        id: 'user-perm-1',
-        userId: 'user-id-123',
-        permissionId: 'perm-1',
-        permission: {
-          id: 'perm-1',
-          name: 'read:articles',
-          description: 'Read articles',
-        },
-      },
-    ],
   };
 
   beforeEach(async () => {
@@ -114,7 +81,7 @@ describe('UsersService', () => {
       password: 'password123',
     };
 
-    it('should create a user without permissions', async () => {
+    it('should create a user with reader role by default', async () => {
       const hashedPassword = 'hashedPassword123';
       (bcrypt.hash as jest.Mock).mockResolvedValue(hashedPassword);
       mockPrismaService.user.create.mockResolvedValue(mockUser);
@@ -128,54 +95,73 @@ describe('UsersService', () => {
           name: 'John Doe',
           email: 'john@example.com',
           password: hashedPassword,
+          role: 'reader',
         },
       });
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
         where: { id: mockUser.id },
-        include: { permissions: { include: { permission: true } } },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          password: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
       expect(result).toEqual(mockUserWithoutPassword);
     });
 
-    it('should create a user with permissions', async () => {
-      const createUserDtoWithPerms = {
+    it('should create a user with custom role when admin creates', async () => {
+      const createUserDtoWithRole = {
         ...createUserDto,
-        permissionIds: ['perm-1', 'perm-2'],
+        role: 'editor' as any,
       };
       const hashedPassword = 'hashedPassword123';
+      const adminUser = { userId: 'admin-123', role: 'admin' };
+      const editorUser = { ...mockUser, role: 'editor' };
+      
       (bcrypt.hash as jest.Mock).mockResolvedValue(hashedPassword);
-      mockPrismaService.user.create.mockResolvedValue(mockUser);
-      mockPrismaService.userPermission.create.mockResolvedValue({});
-      mockPrismaService.user.findUnique.mockResolvedValue(
-        mockUserWithPermissions,
-      );
+      mockPrismaService.user.create.mockResolvedValue(editorUser);
+      mockPrismaService.user.findUnique.mockResolvedValue(editorUser);
 
-      const result = await service.create(createUserDtoWithPerms);
+      const result = await service.create(createUserDtoWithRole, adminUser);
 
-      expect(mockPrismaService.userPermission.create).toHaveBeenCalledTimes(2);
-      expect(mockPrismaService.userPermission.create).toHaveBeenCalledWith({
-        data: { userId: mockUser.id, permissionId: 'perm-1' },
+      expect(mockPrismaService.user.create).toHaveBeenCalledWith({
+        data: {
+          name: 'John Doe',
+          email: 'john@example.com',
+          password: hashedPassword,
+          role: 'editor',
+        },
       });
-      expect(mockPrismaService.userPermission.create).toHaveBeenCalledWith({
-        data: { userId: mockUser.id, permissionId: 'perm-2' },
-      });
-      expect(result).toEqual(mockUserWithPermissionsNoPassword);
+      expect(result.role).toEqual('editor');
     });
 
-    it('should handle empty permission array', async () => {
-      const createUserDtoWithEmptyPerms = {
+    it('should force reader role when non-admin creates user', async () => {
+      const createUserDtoWithRole = {
         ...createUserDto,
-        permissionIds: [],
+        role: 'admin' as any,
       };
       const hashedPassword = 'hashedPassword123';
+      const regularUser = { userId: 'user-123', role: 'reader' };
+      
       (bcrypt.hash as jest.Mock).mockResolvedValue(hashedPassword);
       mockPrismaService.user.create.mockResolvedValue(mockUser);
       mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
 
-      const result = await service.create(createUserDtoWithEmptyPerms);
+      const result = await service.create(createUserDtoWithRole, regularUser);
 
-      expect(mockPrismaService.userPermission.create).not.toHaveBeenCalled();
-      expect(result).toEqual(mockUserWithoutPassword);
+      expect(mockPrismaService.user.create).toHaveBeenCalledWith({
+        data: {
+          name: 'John Doe',
+          email: 'john@example.com',
+          password: hashedPassword,
+          role: 'reader',
+        },
+      });
+      expect(result.role).toEqual('reader');
     });
   });
 
@@ -187,12 +173,18 @@ describe('UsersService', () => {
       const result = await service.findAll();
 
       expect(mockPrismaService.user.findMany).toHaveBeenCalledWith({
-        include: { permissions: { include: { permission: true } } },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
         orderBy: { createdAt: 'desc' },
       });
-      // O serviço remove as senhas, então esperamos users sem password
-      const expectedResult = mockUsers.map(({ password: _, ...user }) => user);
-      expect(result).toEqual(expectedResult);
+      // O serviço já retorna users sem password
+      expect(result).toEqual(mockUsers);
     });
 
     it('should return empty array when no users exist', async () => {
@@ -206,13 +198,20 @@ describe('UsersService', () => {
 
   describe('findOne', () => {
     it('should return a user by id', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUserWithoutPassword);
 
       const result = await service.findOne('user-id-123');
 
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
         where: { id: 'user-id-123' },
-        include: { permissions: { include: { permission: true } } },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
       expect(result).toEqual(mockUserWithoutPassword);
     });
@@ -244,6 +243,15 @@ describe('UsersService', () => {
       expect(mockPrismaService.user.update).toHaveBeenCalledWith({
         where: { id: 'user-id-123' },
         data: { name: 'John Updated' },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          password: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
       const { password: _, ...expectedResult } = updatedUser;
       expect(result).toEqual(expectedResult);
@@ -260,6 +268,15 @@ describe('UsersService', () => {
       expect(mockPrismaService.user.update).toHaveBeenCalledWith({
         where: { id: 'user-id-123' },
         data: { email: 'newemail@example.com' },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          password: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
       const { password: _, ...expectedResult } = updatedUser;
       expect(result).toEqual(expectedResult);
@@ -278,30 +295,29 @@ describe('UsersService', () => {
       expect(mockPrismaService.user.update).toHaveBeenCalledWith({
         where: { id: 'user-id-123' },
         data: { password: hashedPassword },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          password: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
     });
 
-    it('should update user permissions', async () => {
+    it('should update user role', async () => {
       const updateDto = {
         name: 'John Updated',
-        permissionIds: ['perm-3', 'perm-4'],
+        role: 'editor' as any,
       };
-      mockPrismaService.user.update.mockResolvedValue(mockUser);
-      mockPrismaService.userPermission.deleteMany.mockResolvedValue({
-        count: 1,
-      });
-      mockPrismaService.userPermission.create.mockResolvedValue({});
-      mockPrismaService.user.findUnique.mockResolvedValue(
-        mockUserWithPermissions,
-      );
+      const updatedUser = { ...mockUser, name: 'John Updated', role: 'editor' };
+      mockPrismaService.user.update.mockResolvedValue(updatedUser);
 
       const result = await service.update('user-id-123', updateDto);
 
-      expect(mockPrismaService.userPermission.deleteMany).toHaveBeenCalledWith({
-        where: { userId: 'user-id-123' },
-      });
-      expect(mockPrismaService.userPermission.create).toHaveBeenCalledTimes(2);
-      expect(result).toEqual(mockUserWithPermissionsNoPassword);
+      expect(result.role).toEqual('editor');
     });
 
     it('should update multiple fields at once', async () => {
@@ -324,18 +340,29 @@ describe('UsersService', () => {
           email: 'updated@example.com',
           password: hashedPassword,
         },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          password: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
     });
 
-    it('should not update permissions if permissionIds is not an array', async () => {
-      const updateDto = { name: 'John Updated', permissionIds: undefined };
+    it('should not update role if role is not provided', async () => {
+      const updateDto = { name: 'John Updated' };
       mockPrismaService.user.update.mockResolvedValue(mockUser);
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
 
       await service.update('user-id-123', updateDto);
 
-      expect(mockPrismaService.userPermission.deleteMany).not.toHaveBeenCalled();
-      expect(mockPrismaService.userPermission.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.not.objectContaining({ role: expect.anything() }),
+        }),
+      );
     });
   });
 
@@ -370,7 +397,15 @@ describe('UsersService', () => {
 
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
         where: { email: 'john@example.com' },
-        include: { permissions: { include: { permission: true } } },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          password: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
       expect(result).toEqual(mockUser);
     });
@@ -381,6 +416,16 @@ describe('UsersService', () => {
       const result = await service.findByEmail('notfound@example.com');
 
       expect(result).toBeNull();
+    });
+
+    it('should handle error in findByEmail', async () => {
+      mockPrismaService.user.findUnique.mockRejectedValue(
+        new Error('Database error'),
+      );
+
+      await expect(service.findByEmail('john@example.com')).rejects.toThrow(
+        'Database error',
+      );
     });
   });
 
@@ -399,6 +444,50 @@ describe('UsersService', () => {
 
       await expect(service.create(createUserDto)).rejects.toThrow(
         'Unexpected database error',
+      );
+    });
+
+    it('should handle ConflictException in update when email already exists', async () => {
+      const updateDto = { email: 'existing@example.com' };
+      mockPrismaService.user.update.mockRejectedValue(
+        Object.assign(new Error('Email already exists'), { code: 'P2002' })
+      );
+
+      await expect(service.update('user-id-123', updateDto)).rejects.toThrow();
+    });
+
+    it('should handle NotFoundException in update when user not found', async () => {
+      const updateDto = { name: 'John Updated' };
+      mockPrismaService.user.update.mockRejectedValue(
+        Object.assign(new Error('Record not found'), { code: 'P2025' })
+      );
+
+      await expect(service.update('user-id-123', updateDto)).rejects.toThrow();
+    });
+
+    it('should handle NotFoundException in remove when user not found', async () => {
+      mockPrismaService.user.delete.mockRejectedValue(
+        Object.assign(new Error('Record not found'), { code: 'P2025' })
+      );
+
+      await expect(service.remove('user-id-123')).rejects.toThrow();
+    });
+
+    it('should handle error in findAll', async () => {
+      mockPrismaService.user.findMany.mockRejectedValue(
+        new Error('Database error'),
+      );
+
+      await expect(service.findAll()).rejects.toThrow('Database error');
+    });
+
+    it('should handle error in findOne', async () => {
+      mockPrismaService.user.findUnique.mockRejectedValue(
+        new Error('Database error'),
+      );
+
+      await expect(service.findOne('user-id-123')).rejects.toThrow(
+        'Database error',
       );
     });
 

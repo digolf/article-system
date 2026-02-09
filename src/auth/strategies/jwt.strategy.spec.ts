@@ -16,11 +16,7 @@ describe('JwtStrategy', () => {
     }),
   };
 
-  const mockPrismaService = {
-    userPermission: {
-      findMany: jest.fn(),
-    },
-  };
+  const mockPrismaService = {};
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -74,52 +70,29 @@ describe('JwtStrategy', () => {
   describe('validate', () => {
     const mockPayload = {
       sub: 'user-id-123',
-      email: 'user@example.com',
+      role: 'editor',
     };
 
-    it('should validate payload and return user with permissions', async () => {
-      const mockUserPermissions = [
-        {
-          id: 'up-1',
-          userId: 'user-id-123',
-          permissionId: 'perm-1',
-          permission: { id: 'perm-1', name: 'read:users' },
-        },
-        {
-          id: 'up-2',
-          userId: 'user-id-123',
-          permissionId: 'perm-2',
-          permission: { id: 'perm-2', name: 'create:articles' },
-        },
-      ];
-
-      mockPrismaService.userPermission.findMany.mockResolvedValue(
-        mockUserPermissions,
-      );
-
+    it('should validate payload and return user with role', async () => {
       const result = await strategy.validate(mockPayload);
-
-      expect(prismaService.userPermission.findMany).toHaveBeenCalledWith({
-        where: { userId: 'user-id-123' },
-        include: { permission: true },
-      });
 
       expect(result).toEqual({
         userId: 'user-id-123',
-        email: 'user@example.com',
-        permissions: ['read:users', 'create:articles'],
+        role: 'editor',
       });
     });
 
-    it('should return user with empty permissions array if no permissions found', async () => {
-      mockPrismaService.userPermission.findMany.mockResolvedValue([]);
+    it('should validate admin role', async () => {
+      const adminPayload = {
+        sub: 'admin-id-123',
+        role: 'admin',
+      };
 
-      const result = await strategy.validate(mockPayload);
+      const result = await strategy.validate(adminPayload);
 
       expect(result).toEqual({
-        userId: 'user-id-123',
-        email: 'user@example.com',
-        permissions: [],
+        userId: 'admin-id-123',
+        role: 'admin',
       });
     });
 
@@ -131,7 +104,7 @@ describe('JwtStrategy', () => {
     });
 
     it('should throw UnauthorizedException if payload.sub is missing', async () => {
-      const invalidPayload = { email: 'user@example.com' };
+      const invalidPayload = { role: 'editor' };
 
       await expect(strategy.validate(invalidPayload)).rejects.toThrow(
         UnauthorizedException,
@@ -141,46 +114,29 @@ describe('JwtStrategy', () => {
       );
     });
 
-    it('should throw UnauthorizedException if database query fails', async () => {
-      mockPrismaService.userPermission.findMany.mockRejectedValue(
-        new Error('Database error'),
-      );
+    it('should throw UnauthorizedException if payload.role is missing', async () => {
+      const invalidPayload = { sub: 'user-id-123' };
 
-      await expect(strategy.validate(mockPayload)).rejects.toThrow(
+      await expect(strategy.validate(invalidPayload)).rejects.toThrow(
         UnauthorizedException,
       );
-      await expect(strategy.validate(mockPayload)).rejects.toThrow(
+      await expect(strategy.validate(invalidPayload)).rejects.toThrow(
         'Token inválido',
       );
     });
 
-    it('should handle payload with multiple permissions correctly', async () => {
-      const mockUserPermissions = [
-        {
-          permission: { name: 'read:users' },
-        },
-        {
-          permission: { name: 'create:users' },
-        },
-        {
-          permission: { name: 'update:users' },
-        },
-        {
-          permission: { name: 'delete:users' },
-        },
-      ];
+    it('should validate reader role', async () => {
+      const readerPayload = {
+        sub: 'reader-id-123',
+        role: 'reader',
+      };
 
-      mockPrismaService.userPermission.findMany.mockResolvedValue(
-        mockUserPermissions,
-      );
+      const result = await strategy.validate(readerPayload);
 
-      const result = await strategy.validate(mockPayload);
-
-      expect(result.permissions).toHaveLength(4);
-      expect(result.permissions).toContain('read:users');
-      expect(result.permissions).toContain('create:users');
-      expect(result.permissions).toContain('update:users');
-      expect(result.permissions).toContain('delete:users');
+      expect(result).toEqual({
+        userId: 'reader-id-123',
+        role: 'reader',
+      });
     });
 
     it('should throw UnauthorizedException if payload is undefined', async () => {

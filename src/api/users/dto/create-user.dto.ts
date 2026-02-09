@@ -1,12 +1,21 @@
 import {
-  IsArray,
   IsEmail,
+  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+
+/**
+ * Roles disponíveis no sistema
+ */
+export enum UserRole {
+  ADMIN = 'admin',
+  EDITOR = 'editor',
+  READER = 'reader',
+}
 
 /**
  * DTO para criação de usuário
@@ -45,13 +54,16 @@ export class CreateUserDto {
   password: string;
 
   @ApiProperty({
-    description: 'Array de IDs das permissões a serem atribuídas ao usuário',
-    example: [],
+    description:
+      'Role do usuário: admin (acesso total), editor (criar/editar artigos próprios), reader (apenas leitura)',
+    example: 'reader',
     required: false,
-    isArray: true,
-    type: [String],
+    enum: UserRole,
+    default: 'reader',
   })
-  @IsArray({ message: 'Permissões devem ser um array' })
+  @IsEnum(UserRole, {
+    message: 'Role deve ser: admin, editor ou reader',
+  })
   @IsOptional()
-  permissionIds?: string[];
+  role?: UserRole;
 }

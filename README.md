@@ -1,174 +1,172 @@
-# Article System API
+# Article System API
 
-Sistema de gerenciamento de usuários e artigos com autenticação JWT e controle de permissões desenvolvido em NestJS.
+Sistema de gerenciamento de usuários e artigos com autenticação JWT e controle de permissões.
 
-> 📚 **[Documentação Completa](./DOCUMENTATION.md)** - Guia detalhado de instalação, API, testes e deploy
-
-## ✨ Destaques
-
-✅ Autenticação JWT completa  
-✅ Sistema de permissões granular (8 permissões)  
-✅ CRUD de usuários e artigos  
-✅ 176 testes automatizados (100% passing)  
-✅ Documentação Swagger interativa  
-✅ Seed automático com usuário root  
-✅ Containerização com Docker  
-
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# Clone e inicie com Docker
-docker compose up --build
+# 1. Instalar dependências
+npm install
+
+# 2. Configurar variáveis de ambiente
+cp .env.example .env
+
+# 3. Iniciar banco de dados (Docker)
+docker-compose up -d postgres
+
+# 4. Executar migrations
+npm run prisma:migrate
+
+# 5. Executar seed (cria usuário root admin)
+npm run seed
+
+# 6. Iniciar aplicação
+npm run start:dev
 ```
 
-**Pronto!** Acesse:
-- 🌐 API: `http://localhost:3000`
-- 📖 Swagger: `http://localhost:3000/api/docs`
+**Acesse:** http://localhost:3000/api/docs (Swagger)
 
-**Credenciais iniciais:**
-- Email: `root@root.com`
-- Senha: `root123`
+## Credenciais Padrão
 
-## 🧪 Testes
+Após executar o seed:
+
+```
+Email: root@root.com
+Senha: root123
+Permissão: admin (acesso total - artigos e usuários)
+```
+
+```
+Email: editor@editor.com
+Senha: editor123
+Permissão: editor (acesso limitado a gerenciamento artigos próprios)
+```
+
+```
+Email: reader@reader.com
+Senha: reader123
+Permissão: reader (acesso limitado a leitura artigos)
+```
+
+## 📝 Como Criar um Novo Admin
+
+### 1. Faça login como root
 
 ```bash
-npm test              # 126 testes unitários (~2.9s)
-npm run test:e2e      # 78 testes E2E (~26s)
-npm run test:cov      # Com relatório de cobertura
+POST /users/login
+Content-Type: application/json
+
+{
+  "email": "root@root.com",
+  "password": "root123"
+}
 ```
 
-**Status:** ✅ 204/204 testes passando (100%)  
-**Cobertura:** 73% statements, 69% branches, 76% functions
+### 2. Crie o novo admin
 
-## 📖 Documentação
+```bash
+POST /users
+Authorization: Bearer <seu-token>
+Content-Type: application/json
 
-Toda documentação foi consolidada em um único arquivo:
+{
+  "name": "Novo Admin",
+  "email": "novoadmin@example.com",
+  "password": "senha123",
+  "role": "admin" --- PASSE A ROLE DESEJADA
+}
+```
 
-### [📚 DOCUMENTATION.md](./DOCUMENTATION.md)
+**Roles disponíveis:**
+- `"admin"` - Acesso total ao sistema
+- `"editor"` - Criar e editar artigos
+- `"user"` - Apenas leitura
 
-**Conteúdo completo:**
-- 🔧 Instalação e Configuração
-- 🏗️ Arquitetura do Sistema
-- 🔐 Autenticação e Autorização
-- 📡 API Endpoints (todos os 13 endpoints)
-- 🎫 Sistema de Permissões
-- 🧪 Guia de Testes (unitários e E2E)
-- 📏 Qualidade de Código (Linter/Prettier)
-- 📖 Swagger/OpenAPI
-- 🌱 Seed Automático
-- 🐳 Docker
-- ❓ Troubleshooting
-- 🚀 Deploy em Produção
+## Diferença Entre Uso Público e Admin
 
-## 🚀 Tecnologias
+### Rota Única: `POST /users`
+
+#### Uso Público (sem token)
+- Qualquer pessoa pode criar conta
+- Role é **ignorada** e sempre cria como "user"
+- Acesso apenas de leitura
+
+```bash
+curl -X POST http://localhost:3000/users \
+  -H "Content-Type: application/json" \
+  -d '{"name":"João","email":"joao@example.com","password":"senha123"}'
+```
+
+#### Uso Admin (com token)
+- Requer token admin
+- Pode criar qualquer role: admin, editor ou user
+- Controle total sobre permissões
+
+```bash
+curl -X POST http://localhost:3000/users \
+  -H "Authorization: Bearer <token-admin>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Admin","email":"admin@example.com","password":"senha123","role":"admin"}'
+```
+
+## Documentação Completa
+
+Veja [DOCUMENTATION.md](./DOCUMENTATION.md) para:
+- Arquitetura detalhada
+- Todos os endpoints da API
+- Sistema de permissões
+- Testes e qualidade de código
+- Troubleshooting
+
+##  Tecnologias
 
 - **NestJS** - Framework Node.js
 - **Prisma** - ORM para PostgreSQL
-- **PostgreSQL** - Banco de dados
 - **JWT** - Autenticação
-- **Docker** - Containerização
-- **TypeScript** - Linguagem
-- **Jest** - Testes
 - **Swagger** - Documentação da API
+- **Docker** - Containerização
+- **TypeScript** - Tipagem estática
 
-## 🛠️ Comandos Principais
+## Endpoints Principais
+Acessar /api/docs para visualizar a estrutura de endpoints. 
 
-```bash
-# Desenvolvimento
-npm run start:dev
+## Sistema de Permissões
 
-# Testes
-npm test                # Unitários
-npm run test:e2e        # E2E
+### Roles e Permissões
 
-# Qualidade
-npm run lint:format     # Lint + Format
+| Role | Artigos (Ler) | Artigos (Criar) | Artigos (Editar) | Artigos (Deletar) | Gerenciar Usuários |
+|------|---------------|-----------------|------------------|--------------------|-------------------|
+| **Admin** | Todos | Sim | Todos | Todos | Sim |
+| **Editor** | Todos | Sim | Apenas próprios | Apenas próprios |  Não |
+| **Reader** | Todos |  Não |  Não |  Não |  Não |
 
-# Docker
-docker compose up --build
-docker compose down
-```
+**Resumo:**
+- **Admin**: Acesso total ao sistema
+- **Editor**: Pode criar e gerenciar seus próprios artigos
+- **Reader**: Pode apenas ler artigos (read-only)
 
-## 🔐 Sistema de Permissões
-
-**8 permissões granulares:**
-- `read:users`, `create:users`, `update:users`, `delete:users`
-- `read:articles`, `create:articles`, `update:articles`, `delete:articles`
-
-**Perfis:**
-- **Admin** - Todas as permissões
-- **Editor** - Gerencia artigos (apenas próprios)
-- **Reader** - Apenas leitura
-
-## 📡 API Endpoints
-
-### Principais rotas:
-
-```
-GET  /health                 # Health check
-POST /users/register         # Registro
-POST /users/login            # Login → JWT token
-
-GET    /users                # Listar usuários
-GET    /users/:id            # Buscar usuário
-PUT    /users/:id            # Atualizar
-DELETE /users/:id            # Deletar
-
-GET    /articles             # Listar artigos
-POST   /articles             # Criar artigo
-GET    /articles/:id         # Buscar artigo
-PUT    /articles/:id         # Atualizar (owner/admin)
-DELETE /articles/:id         # Deletar (owner/admin)
-```
-
-**Swagger:** `http://localhost:3000/api/docs`
-
-## 📊 Cobertura de Testes
-
-| Componente | Cobertura |
-|-----------|-----------|
-| Services | ✅ 100% |
-| Controllers | ✅ 100% |
-| Endpoints | ✅ 100% |
-| Auth/Permissions | ✅ 100% |
-
-## 🗄️ Banco de Dados
-
-**PostgreSQL** com Prisma ORM
-
-### Modelos principais:
-- **User** - id, name, email, password (hash bcrypt)
-- **Permission** - id, name, description
-- **Article** - id, title, content, authorId
-- **UserPermission** - userId, permissionId (N:N)
-
-## 🐳 Docker
+## Cobertura de Testes
 
 ```bash
-# Subir ambiente completo
-docker compose up --build
+# Testes unitários
+npm run test
+
+# Testes e2e
+npm run test:e2e
+
+# Cobertura
+npm run test:cov
+```
+
+## Docker
+
+```bash
+# Iniciar tudo (app + banco)
+docker-compose up -d
 
 # Ver logs
-docker compose logs -f app
+docker-compose logs -f
 
-# Resetar banco
-docker compose down -v
+# Parar
+docker-compose down
 ```
-
-## ⚙️ Variáveis de Ambiente
-
-```env
-DATABASE_URL="postgresql://user:pass@host:5432/db"
-JWT_SECRET="change-me-in-production"
-PORT=3000
-```
-
-## 📞 Suporte
-
-Para informações detalhadas, consulte [DOCUMENTATION.md](./DOCUMENTATION.md)
-
----
-
-**Status:** ✅ Projeto completo e pronto para produção  
-**Testes:** 176/176 passando (100%)  
-**Documentação:** Completa no DOCUMENTATION.md

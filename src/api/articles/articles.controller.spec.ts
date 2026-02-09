@@ -221,6 +221,7 @@ describe('ArticlesController', () => {
         'article-id-123',
         updateArticleDto,
         mockRequest.user.userId,
+        mockRequest.user.role,
       );
       expect(result).toEqual(updatedArticle);
       expect(result.title).toBe('Updated Title');
@@ -309,6 +310,7 @@ describe('ArticlesController', () => {
       expect(articlesService.remove).toHaveBeenCalledWith(
         'article-id-123',
         mockRequest.user.userId,
+        mockRequest.user.role,
       );
       expect(result).toEqual(mockResponse);
     });

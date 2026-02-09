@@ -7,7 +7,6 @@ describe('AppController', () => {
   let appService: AppService;
 
   const mockAppService = {
-    getHello: jest.fn(),
     getHealth: jest.fn(),
   };
 
@@ -36,17 +35,6 @@ describe('AppController', () => {
     expect(appController).toBeDefined();
   });
 
-  describe('getHello', () => {
-    it('should return "Hello World!"', () => {
-      mockAppService.getHello.mockReturnValue('Hello World!');
-
-      const result = appController.getHello();
-
-      expect(appService.getHello).toHaveBeenCalled();
-      expect(result).toBe('Hello World!');
-    });
-  });
-
   describe('getHealth', () => {
     it('should return health status', () => {
       const mockHealthResponse = {
@@ -55,7 +43,6 @@ describe('AppController', () => {
         uptime: 100.5,
         environment: 'development',
         version: '0.0.1',
-        database: 'connected',
       };
       mockAppService.getHealth.mockReturnValue(mockHealthResponse);
 

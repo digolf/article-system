@@ -27,30 +27,9 @@ describe('AuthService', () => {
     name: 'John Doe',
     email: 'john@example.com',
     password: 'hashedPassword123',
+    role: 'editor',
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
-    permissions: [
-      {
-        id: 'user-perm-1',
-        userId: 'user-id-123',
-        permissionId: 'perm-1',
-        permission: {
-          id: 'perm-1',
-          name: 'read:articles',
-          description: 'Read articles',
-        },
-      },
-      {
-        id: 'user-perm-2',
-        userId: 'user-id-123',
-        permissionId: 'perm-2',
-        permission: {
-          id: 'perm-2',
-          name: 'create:articles',
-          description: 'Create articles',
-        },
-      },
-    ],
   };
 
   beforeEach(async () => {
@@ -95,12 +74,14 @@ describe('AuthService', () => {
 
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
         where: { email: 'john@example.com' },
-        include: {
-          permissions: {
-            include: {
-              permission: true,
-            },
-          },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          password: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
         },
       });
       expect(bcrypt.compare).toHaveBeenCalledWith(
@@ -111,9 +92,9 @@ describe('AuthService', () => {
         id: mockUser.id,
         name: mockUser.name,
         email: mockUser.email,
+        role: mockUser.role,
         createdAt: mockUser.createdAt,
         updatedAt: mockUser.updatedAt,
-        permissions: mockUser.permissions,
       });
       expect(result.password).toBeUndefined();
     });
@@ -141,20 +122,17 @@ describe('AuthService', () => {
       ).rejects.toThrow('Credenciais inválidas');
     });
 
-    it('should throw UnauthorizedException on database error', async () => {
+    it('should throw error on database error', async () => {
       mockPrismaService.user.findUnique.mockRejectedValue(
         new Error('Database error'),
       );
 
       await expect(
         service.validateUser('john@example.com', 'password123'),
-      ).rejects.toThrow(UnauthorizedException);
-      await expect(
-        service.validateUser('john@example.com', 'password123'),
-      ).rejects.toThrow('Erro ao validar usuário');
+      ).rejects.toThrow('Database error');
     });
 
-    it('should throw UnauthorizedException on bcrypt error', async () => {
+    it('should throw error on bcrypt error', async () => {
       mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
       (bcrypt.compare as jest.Mock).mockRejectedValue(
         new Error('Bcrypt error'),
@@ -162,10 +140,7 @@ describe('AuthService', () => {
 
       await expect(
         service.validateUser('john@example.com', 'password123'),
-      ).rejects.toThrow(UnauthorizedException);
-      await expect(
-        service.validateUser('john@example.com', 'password123'),
-      ).rejects.toThrow('Erro ao validar usuário');
+      ).rejects.toThrow('Bcrypt error');
     });
   });
 
@@ -184,18 +159,7 @@ describe('AuthService', () => {
           id: mockUser.id,
           name: mockUser.name,
           email: mockUser.email,
-          permissions: [
-            {
-              id: 'perm-1',
-              name: 'read:articles',
-              description: 'Read articles',
-            },
-            {
-              id: 'perm-2',
-              name: 'create:articles',
-              description: 'Create articles',
-            },
-          ],
+          role: mockUser.role,
         },
       });
     });
@@ -210,29 +174,27 @@ describe('AuthService', () => {
 
       expect(mockJwtService.sign).toHaveBeenCalledWith({
         sub: mockUser.id,
-        email: mockUser.email,
-        permissions: ['read:articles', 'create:articles'],
+        role: mockUser.role,
       });
     });
 
-    it('should handle user with no permissions', async () => {
-      const userWithoutPerms = {
+    it('should handle user with reader role', async () => {
+      const userReader = {
         ...mockUser,
-        permissions: [],
+        role: 'reader',
       };
       const mockToken = 'mock.jwt.token';
-      mockPrismaService.user.findUnique.mockResolvedValue(userWithoutPerms);
+      mockPrismaService.user.findUnique.mockResolvedValue(userReader);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       mockJwtService.sign.mockReturnValue(mockToken);
 
       const result = await service.login('john@example.com', 'password123');
 
       expect(mockJwtService.sign).toHaveBeenCalledWith({
-        sub: userWithoutPerms.id,
-        email: userWithoutPerms.email,
-        permissions: [],
+        sub: userReader.id,
+        role: userReader.role,
       });
-      expect(result.user.permissions).toEqual([]);
+      expect(result.user.role).toEqual('reader');
     });
 
     it('should throw UnauthorizedException when user not found', async () => {
@@ -252,20 +214,17 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('should throw UnauthorizedException on validateUser error', async () => {
+    it('should throw error on validateUser error', async () => {
       mockPrismaService.user.findUnique.mockRejectedValue(
         new Error('Database error'),
       );
 
       await expect(
         service.login('john@example.com', 'password123'),
-      ).rejects.toThrow(UnauthorizedException);
-      await expect(
-        service.login('john@example.com', 'password123'),
-      ).rejects.toThrow('Erro ao validar usuário');
+      ).rejects.toThrow('Database error');
     });
 
-    it('should throw UnauthorizedException on JWT signing error', async () => {
+    it('should throw error on JWT signing error', async () => {
       mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       mockJwtService.sign.mockImplementation(() => {
@@ -274,10 +233,7 @@ describe('AuthService', () => {
 
       await expect(
         service.login('john@example.com', 'password123'),
-      ).rejects.toThrow(UnauthorizedException);
-      await expect(
-        service.login('john@example.com', 'password123'),
-      ).rejects.toThrow('Erro ao realizar login');
+      ).rejects.toThrow('JWT error');
     });
   });
 });
