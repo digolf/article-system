@@ -47,7 +47,6 @@ export class AuthService {
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
-
     if (!isPasswordValid) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
@@ -70,7 +69,6 @@ export class AuthService {
   ): Promise<{ access_token: string; user: any }> {
     const user = await this.validateUser(email, password);
 
-    // JWT payload simplificado: apenas ID e role
     const payload = {
       sub: user.id,
       role: user.role.name,
