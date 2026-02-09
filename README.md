@@ -68,7 +68,7 @@ Authorization: Bearer <token>
 npm run start:dev
 
 # Testes
-npm test              # Unitários (134 testes)
+npm test              # Unitários
 npm run test:e2e      # E2E
 npm run test:cov      # Com cobertura
 
