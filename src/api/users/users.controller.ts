@@ -44,11 +44,11 @@ export class UsersController {
     summary: 'Criar novo usuário',
     description:
       '**Rota híbrida que funciona de 2 formas:**\n\n' +
-      '1️⃣ **Sem token (Público - Auto-cadastro)**\n' +
+      ' **Sem token (Público - Auto-cadastro)**\n' +
       '   - Qualquer pessoa pode criar uma conta\n' +
       '   - Role é IGNORADA por segurança\n' +
       '   - Sempre cria com role "reader" (apenas leitura)\n\n' +
-      '2️⃣ **Com token admin (Criar usuário customizado)**\n' +
+      ' **Com token admin (Criar usuário customizado)**\n' +
       '   - Requer autenticação com role "admin"\n' +
       '   - Pode especificar role: "admin", "editor" ou "reader"\n' +
       '   - Admin pode criar outros admins\n\n' +
