@@ -31,7 +31,12 @@ export class AuthService {
         name: true,
         email: true,
         password: true,
-        role: true,
+        role: {
+          select: {
+            name: true,
+            description: true,
+          },
+        },
         createdAt: true,
         updatedAt: true,
       },
@@ -68,7 +73,7 @@ export class AuthService {
     // JWT payload simplificado: apenas ID e role
     const payload = {
       sub: user.id,
-      role: user.role,
+      role: user.role.name,
     };
 
     return {
@@ -77,7 +82,7 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: user.role.name,
       },
     };
   }

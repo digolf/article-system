@@ -20,6 +20,9 @@ describe('UsersService', () => {
       update: jest.fn(),
       delete: jest.fn(),
     },
+    role: {
+      findUnique: jest.fn(),
+    },
     userPermission: {
       create: jest.fn(),
       deleteMany: jest.fn(),
@@ -29,12 +32,21 @@ describe('UsersService', () => {
     },
   };
 
+  const mockRole = {
+    id: 'role-id-reader',
+    name: 'reader',
+    description: 'Apenas leitura de artigos',
+  };
+
   const mockUser = {
     id: 'user-id-123',
     name: 'John Doe',
     email: 'john@example.com',
     password: 'hashedPassword123',
-    role: 'reader',
+    role: {
+      name: 'reader',
+      description: 'Apenas leitura de artigos',
+    },
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
   };
@@ -44,7 +56,10 @@ describe('UsersService', () => {
     id: 'user-id-123',
     name: 'John Doe',
     email: 'john@example.com',
-    role: 'reader',
+    role: {
+      name: 'reader',
+      description: 'Apenas leitura de artigos',
+    },
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
   };
@@ -84,18 +99,22 @@ describe('UsersService', () => {
     it('should create a user with reader role by default', async () => {
       const hashedPassword = 'hashedPassword123';
       (bcrypt.hash as jest.Mock).mockResolvedValue(hashedPassword);
+      mockPrismaService.role.findUnique.mockResolvedValue(mockRole);
       mockPrismaService.user.create.mockResolvedValue(mockUser);
       mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
 
       const result = await service.create(createUserDto);
 
       expect(bcrypt.hash).toHaveBeenCalledWith('password123', 10);
+      expect(mockPrismaService.role.findUnique).toHaveBeenCalledWith({
+        where: { name: 'reader' },
+      });
       expect(mockPrismaService.user.create).toHaveBeenCalledWith({
         data: {
           name: 'John Doe',
           email: 'john@example.com',
           password: hashedPassword,
-          role: 'reader',
+          roleId: mockRole.id,
         },
       });
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
@@ -105,7 +124,13 @@ describe('UsersService', () => {
           name: true,
           email: true,
           password: true,
-          role: true,
+          role: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+            },
+          },
           createdAt: true,
           updatedAt: true,
         },
@@ -120,23 +145,31 @@ describe('UsersService', () => {
       };
       const hashedPassword = 'hashedPassword123';
       const adminUser = { userId: 'admin-123', role: 'admin' };
-      const editorUser = { ...mockUser, role: 'editor' };
+      const mockEditorRole = { id: 'role-id-editor', name: 'editor', description: 'Editor' };
+      const editorUser = { 
+        ...mockUser, 
+        role: { name: 'editor', description: 'Editor' },
+      };
       
       (bcrypt.hash as jest.Mock).mockResolvedValue(hashedPassword);
+      mockPrismaService.role.findUnique.mockResolvedValue(mockEditorRole);
       mockPrismaService.user.create.mockResolvedValue(editorUser);
       mockPrismaService.user.findUnique.mockResolvedValue(editorUser);
 
       const result = await service.create(createUserDtoWithRole, adminUser);
 
+      expect(mockPrismaService.role.findUnique).toHaveBeenCalledWith({
+        where: { name: 'editor' },
+      });
       expect(mockPrismaService.user.create).toHaveBeenCalledWith({
         data: {
           name: 'John Doe',
           email: 'john@example.com',
           password: hashedPassword,
-          role: 'editor',
+          roleId: mockEditorRole.id,
         },
       });
-      expect(result.role).toEqual('editor');
+      expect(result.role).toEqual({ name: 'editor', description: 'Editor' });
     });
 
     it('should force reader role when non-admin creates user', async () => {
@@ -148,20 +181,24 @@ describe('UsersService', () => {
       const regularUser = { userId: 'user-123', role: 'reader' };
       
       (bcrypt.hash as jest.Mock).mockResolvedValue(hashedPassword);
+      mockPrismaService.role.findUnique.mockResolvedValue(mockRole);
       mockPrismaService.user.create.mockResolvedValue(mockUser);
       mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
 
       const result = await service.create(createUserDtoWithRole, regularUser);
 
+      expect(mockPrismaService.role.findUnique).toHaveBeenCalledWith({
+        where: { name: 'reader' },
+      });
       expect(mockPrismaService.user.create).toHaveBeenCalledWith({
         data: {
           name: 'John Doe',
           email: 'john@example.com',
           password: hashedPassword,
-          role: 'reader',
+          roleId: mockRole.id,
         },
       });
-      expect(result.role).toEqual('reader');
+      expect(result.role).toEqual({ name: 'reader', description: 'Apenas leitura de artigos' });
     });
   });
 
@@ -177,7 +214,12 @@ describe('UsersService', () => {
           id: true,
           name: true,
           email: true,
-          role: true,
+          role: {
+            select: {
+              name: true,
+              description: true,
+            },
+          },
           createdAt: true,
           updatedAt: true,
         },
@@ -208,7 +250,7 @@ describe('UsersService', () => {
           id: true,
           name: true,
           email: true,
-          role: true,
+          role: { select: { name: true, description: true } },
           createdAt: true,
           updatedAt: true,
         },
@@ -248,7 +290,7 @@ describe('UsersService', () => {
           name: true,
           email: true,
           password: true,
-          role: true,
+          role: { select: { name: true, description: true } },
           createdAt: true,
           updatedAt: true,
         },
@@ -273,7 +315,7 @@ describe('UsersService', () => {
           name: true,
           email: true,
           password: true,
-          role: true,
+          role: { select: { name: true, description: true } },
           createdAt: true,
           updatedAt: true,
         },
@@ -300,7 +342,7 @@ describe('UsersService', () => {
           name: true,
           email: true,
           password: true,
-          role: true,
+          role: { select: { name: true, description: true } },
           createdAt: true,
           updatedAt: true,
         },
@@ -312,12 +354,21 @@ describe('UsersService', () => {
         name: 'John Updated',
         role: 'editor' as any,
       };
-      const updatedUser = { ...mockUser, name: 'John Updated', role: 'editor' };
+      const mockEditorRole = { id: 'role-id-editor', name: 'editor', description: 'Editor' };
+      const updatedUser = { 
+        ...mockUser, 
+        name: 'John Updated', 
+        role: { name: 'editor', description: 'Editor' },
+      };
+      mockPrismaService.role.findUnique.mockResolvedValue(mockEditorRole);
       mockPrismaService.user.update.mockResolvedValue(updatedUser);
 
       const result = await service.update('user-id-123', updateDto);
 
-      expect(result.role).toEqual('editor');
+      expect(mockPrismaService.role.findUnique).toHaveBeenCalledWith({
+        where: { name: 'editor' },
+      });
+      expect(result.role).toEqual({ name: 'editor', description: 'Editor' });
     });
 
     it('should update multiple fields at once', async () => {
@@ -345,7 +396,7 @@ describe('UsersService', () => {
           name: true,
           email: true,
           password: true,
-          role: true,
+          role: { select: { name: true, description: true } },
           createdAt: true,
           updatedAt: true,
         },
@@ -402,7 +453,7 @@ describe('UsersService', () => {
           name: true,
           email: true,
           password: true,
-          role: true,
+          role: { select: { name: true, description: true } },
           createdAt: true,
           updatedAt: true,
         },
@@ -438,6 +489,7 @@ describe('UsersService', () => {
       };
       const hashedPassword = 'hashedPassword123';
       (bcrypt.hash as jest.Mock).mockResolvedValue(hashedPassword);
+      mockPrismaService.role.findUnique.mockResolvedValue(mockRole);
       
       const genericError = new Error('Unexpected database error');
       mockPrismaService.user.create.mockRejectedValue(genericError);

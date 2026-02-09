@@ -27,7 +27,10 @@ describe('AuthService', () => {
     name: 'John Doe',
     email: 'john@example.com',
     password: 'hashedPassword123',
-    role: 'editor',
+    role: {
+      name: 'editor',
+      description: 'Criar e gerenciar próprios artigos',
+    },
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
   };
@@ -79,7 +82,7 @@ describe('AuthService', () => {
           name: true,
           email: true,
           password: true,
-          role: true,
+          role: { select: { name: true, description: true } },
           createdAt: true,
           updatedAt: true,
         },
@@ -159,7 +162,7 @@ describe('AuthService', () => {
           id: mockUser.id,
           name: mockUser.name,
           email: mockUser.email,
-          role: mockUser.role,
+          role: 'editor',
         },
       });
     });
@@ -174,14 +177,14 @@ describe('AuthService', () => {
 
       expect(mockJwtService.sign).toHaveBeenCalledWith({
         sub: mockUser.id,
-        role: mockUser.role,
+        role: 'editor',
       });
     });
 
     it('should handle user with reader role', async () => {
       const userReader = {
         ...mockUser,
-        role: 'reader',
+        role: { name: 'reader', description: 'Apenas leitura' },
       };
       const mockToken = 'mock.jwt.token';
       mockPrismaService.user.findUnique.mockResolvedValue(userReader);
@@ -192,7 +195,7 @@ describe('AuthService', () => {
 
       expect(mockJwtService.sign).toHaveBeenCalledWith({
         sub: userReader.id,
-        role: userReader.role,
+        role: 'reader',
       });
       expect(result.user.role).toEqual('reader');
     });

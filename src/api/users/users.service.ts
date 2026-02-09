@@ -24,40 +24,63 @@ export class UsersService {
     const isAdmin = requestingUser?.role === 'admin';
 
     // Determinar role: se admin, usar role fornecida; senão, forçar 'reader'
-    let role = UserRole.READER;
+    let roleName = UserRole.READER;
     if (isAdmin && createUserDto.role) {
-      role = createUserDto.role;
+      roleName = createUserDto.role;
     }
 
-    const user = await this.prisma.user.create({
-      data: {
-        name: createUserDto.name,
-        email: createUserDto.email,
-        password: hashedPassword,
-        role: role,
-      },
+    // Buscar o roleId pelo nome da role
+    const role = await this.prisma.role.findUnique({
+      where: { name: roleName },
     });
 
-    // Buscar usuário criado sem a senha
-    const createdUser = await this.prisma.user.findUnique({
-      where: { id: user.id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        password: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    if (!createdUser) {
-      throw new NotFoundException('Usuário não encontrado após criação');
+    if (!role) {
+      throw new NotFoundException(`Role ${roleName} não encontrada`);
     }
 
-    const { password: _, ...userWithoutPassword } = createdUser;
-    return userWithoutPassword;
+    try {
+      const user = await this.prisma.user.create({
+        data: {
+          name: createUserDto.name,
+          email: createUserDto.email,
+          password: hashedPassword,
+          roleId: role.id,
+        },
+      });
+
+      // Buscar usuário criado sem a senha
+      const createdUser = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          password: true,
+          role: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+            },
+          },
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      if (!createdUser) {
+        throw new NotFoundException('Usuário não encontrado após criação');
+      }
+
+      const { password: _, ...userWithoutPassword } = createdUser;
+      return userWithoutPassword;
+    } catch (error: any) {
+      // Tratamento de erro para email duplicado
+      if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+        throw new ConflictException('Email já está em uso');
+      }
+      throw error;
+    }
   }
 
   async findAll() {
@@ -66,7 +89,12 @@ export class UsersService {
         id: true,
         name: true,
         email: true,
-        role: true,
+        role: {
+          select: {
+            name: true,
+            description: true,
+          },
+        },
         createdAt: true,
         updatedAt: true,
       },
@@ -83,7 +111,12 @@ export class UsersService {
         id: true,
         name: true,
         email: true,
-        role: true,
+        role: {
+          select: {
+            name: true,
+            description: true,
+          },
+        },
         createdAt: true,
         updatedAt: true,
       },
@@ -101,34 +134,67 @@ export class UsersService {
     if (updateUserDto.password) {
       dataToUpdate.password = await bcrypt.hash(updateUserDto.password, 10);
     }
-    if (updateUserDto.role) dataToUpdate.role = updateUserDto.role;
-
-    const updatedUser = await this.prisma.user.update({
-      where: { id },
-      data: dataToUpdate,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        password: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    if (!updatedUser) {
-      throw new NotFoundException('Usuário não encontrado');
+    if (updateUserDto.role) {
+      // Buscar o roleId pelo nome da role
+      const role = await this.prisma.role.findUnique({
+        where: { name: updateUserDto.role },
+      });
+      if (!role) {
+        throw new NotFoundException(`Role ${updateUserDto.role} não encontrada`);
+      }
+      dataToUpdate.roleId = role.id;
     }
 
-    // Remove password from response
-    const { password: _, ...userWithoutPassword } = updatedUser;
-    return userWithoutPassword;
+    try {
+      const updatedUser = await this.prisma.user.update({
+        where: { id },
+        data: dataToUpdate,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          password: true,
+          role: {
+            select: {
+              name: true,
+              description: true,
+            },
+          },
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      if (!updatedUser) {
+        throw new NotFoundException('Usuário não encontrado');
+      }
+
+      // Remove password from response
+      const { password: _, ...userWithoutPassword } = updatedUser;
+      return userWithoutPassword;
+    } catch (error: any) {
+      // Tratamento de erro para email duplicado
+      if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+        throw new ConflictException('Email já está em uso');
+      }
+      // Tratamento de erro para registro não encontrado
+      if (error.code === 'P2025') {
+        throw new NotFoundException('Usuário não encontrado');
+      }
+      throw error;
+    }
   }
 
   async remove(id: string) {
-    await this.prisma.user.delete({ where: { id } });
-    return { message: 'Usuário deletado com sucesso' };
+    try {
+      await this.prisma.user.delete({ where: { id } });
+      return { message: 'Usuário deletado com sucesso' };
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        throw new NotFoundException('Usuário não encontrado');
+      }
+      throw error;
+    }
   }
 
   async findByEmail(email: string) {
@@ -139,7 +205,12 @@ export class UsersService {
         name: true,
         email: true,
         password: true,
-        role: true,
+        role: {
+          select: {
+            name: true,
+            description: true,
+          },
+        },
         createdAt: true,
         updatedAt: true,
       },

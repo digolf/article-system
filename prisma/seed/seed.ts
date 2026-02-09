@@ -4,77 +4,152 @@ import * as bcrypt from 'bcrypt';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Iniciando seed do banco de dados...');
+  console.log('Seed iniciado...\n');
 
-  // Criar usuário admin
-  const adminPassword = await bcrypt.hash('admin123', 10);
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@admin.com' },
-    update: { role: 'admin' },
+  // 1. Criar Roles
+  console.log('- Criando roles...');
+  const adminRole = await prisma.role.upsert({
+    where: { name: 'admin' },
+    update: {},
     create: {
-      email: 'admin@admin.com',
-      name: 'Admin User',
-      password: adminPassword,
-      role: 'admin',
+      name: 'admin',
+      description: 'Acesso total ao sistema',
     },
   });
 
-  console.log('Usuário Admin criado:', {
-    id: admin.id,
-    email: admin.email,
-    name: admin.name,
-    role: admin.role,
+  const editorRole = await prisma.role.upsert({
+    where: { name: 'editor' },
+    update: {},
+    create: {
+      name: 'editor',
+      description: 'Criar e gerenciar próprios artigos',
+    },
   });
 
-  // Criar usuário editor
+  const readerRole = await prisma.role.upsert({
+    where: { name: 'reader' },
+    update: {},
+    create: {
+      name: 'reader',
+      description: 'Apenas leitura de artigos',
+    },
+  });
+
+  console.log('- 3 roles criadas\n');
+
+  // 2. Criar Permissões
+  console.log('- Criando permissões...');
+  const permissions = await Promise.all([
+    // Permissões de artigos
+    prisma.permission.upsert({
+      where: { name: 'read:articles' },
+      update: {},
+      create: { name: 'read:articles', description: 'Ler artigos', resource: 'article', action: 'read' },
+    }),
+    prisma.permission.upsert({
+      where: { name: 'create:articles' },
+      update: {},
+      create: { name: 'create:articles', description: 'Criar artigos', resource: 'article', action: 'create' },
+    }),
+    prisma.permission.upsert({
+      where: { name: 'update:articles' },
+      update: {},
+      create: { name: 'update:articles', description: 'Atualizar artigos', resource: 'article', action: 'update' },
+    }),
+    prisma.permission.upsert({
+      where: { name: 'delete:articles' },
+      update: {},
+      create: { name: 'delete:articles', description: 'Deletar artigos', resource: 'article', action: 'delete' },
+    }),
+    // Permissão admin (acesso total)
+    prisma.permission.upsert({
+      where: { name: 'admin' },
+      update: {},
+      create: { name: 'admin', description: 'Acesso total ao sistema', resource: 'system', action: 'all' },
+    }),
+  ]);
+
+  console.log('- 5 permissões criadas\n');
+
+  // 3. Associar Permissões às Roles
+  console.log('- Associando permissões às roles...');
+
+  // Admin: todas as permissões
+  await prisma.rolePermission.createMany({
+    data: permissions.map(p => ({ roleId: adminRole.id, permissionId: p.id })),
+    skipDuplicates: true,
+  });
+
+  // Editor: permissões de artigos
+  const articlePermissions = permissions.filter(p => p.resource === 'article');
+  await prisma.rolePermission.createMany({
+    data: articlePermissions.map(p => ({ roleId: editorRole.id, permissionId: p.id })),
+    skipDuplicates: true,
+  });
+
+  // Reader: apenas leitura de artigos
+  const readPermission = permissions.find(p => p.name === 'read:articles');
+  if (readPermission) {
+    await prisma.rolePermission.create({
+      data: { roleId: readerRole.id, permissionId: readPermission.id },
+    }).catch(() => {});
+  }
+
+  console.log('- Permissões associadas às roles\n');
+
+  // 4. Criar Usuário Root (Admin)
+  console.log('- Criando usuário root...');
+  const rootPassword = await bcrypt.hash('root123', 10);
+  const root = await prisma.user.upsert({
+    where: { email: 'root@root.com' },
+    update: { roleId: adminRole.id },
+    create: {
+      email: 'root@root.com',
+      name: 'Root User',
+      password: rootPassword,
+      roleId: adminRole.id,
+    },
+  });
+
+  console.log(`- Usuário root criado: ${root.id}\n`);
+
+  // 5. Criar Usuário Editor (Exemplo)
+  console.log('- Criando usuário editor...');
   const editorPassword = await bcrypt.hash('editor123', 10);
   const editor = await prisma.user.upsert({
     where: { email: 'editor@editor.com' },
-    update: { role: 'editor' },
+    update: { roleId: editorRole.id },
     create: {
       email: 'editor@editor.com',
       name: 'Editor User',
       password: editorPassword,
-      role: 'editor',
+      roleId: editorRole.id,
     },
   });
 
-  console.log('Usuário Editor criado:', {
-    id: editor.id,
-    email: editor.email,
-    name: editor.name,
-    role: editor.role,
-  });
+  console.log(`- Usuário editor criado: ${editor.id}\n`);
 
-  // Criar usuário reader
+  // 6. Criar Usuário Reader (Exemplo)
+  console.log('- Criando usuário reader...');
   const readerPassword = await bcrypt.hash('reader123', 10);
   const reader = await prisma.user.upsert({
     where: { email: 'reader@reader.com' },
-    update: { role: 'reader' },
+    update: { roleId: readerRole.id },
     create: {
       email: 'reader@reader.com',
       name: 'Reader User',
       password: readerPassword,
-      role: 'reader',
+      roleId: readerRole.id,
     },
   });
 
-  console.log('Usuário Reader criado:', {
-    id: reader.id,
-    email: reader.email,
-    name: reader.name,
-    role: reader.role,
-  });
+  console.log(`- Usuário reader criado: ${reader.id}\n`);
 
-  console.log('\nSeed concluído com sucesso!');
-  console.log('\nCredenciais de acesso:');
-  console.log('Admin:  admin@admin.com   / admin123');
-  console.log('Editor: editor@editor.com / editor123');
-  console.log('Reader: reader@reader.com / reader123');
-  console.log('\nRoles disponíveis:');
-  console.log('  - admin:  Acesso total ao sistema');
-  console.log('  - editor: Criar e gerenciar próprios artigos');
-  console.log('  - reader: Apenas leitura de artigos');
+  console.log('Seed concluído com sucesso!\n');
+  console.log('Credenciais dos usuários:');
+  console.log('  Root:   root@root.com     / root123   (admin - acesso total)');
+  console.log('  Editor: editor@editor.com / editor123 (editor - criar/editar artigos)');
+  console.log('  Reader: reader@reader.com / reader123 (reader - apenas leitura)');
 }
 
 main()
