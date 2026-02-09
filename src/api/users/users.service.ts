@@ -19,17 +19,13 @@ export class UsersService {
    */
   async create(createUserDto: CreateUserDto, requestingUser?: any) {
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-
-    // Verificar se o usuário que está criando é admin
     const isAdmin = requestingUser?.role === 'admin';
 
-    // Determinar role: se admin, usar role fornecida; senão, forçar 'reader'
     let roleName = UserRole.READER;
     if (isAdmin && createUserDto.role) {
       roleName = createUserDto.role;
     }
 
-    // Buscar o roleId pelo nome da role
     const role = await this.prisma.role.findUnique({
       where: { name: roleName },
     });
@@ -48,7 +44,6 @@ export class UsersService {
         },
       });
 
-      // Buscar usuário criado sem a senha
       const createdUser = await this.prisma.user.findUnique({
         where: { id: user.id },
         select: {
@@ -75,7 +70,6 @@ export class UsersService {
       const { password: _, ...userWithoutPassword } = createdUser;
       return userWithoutPassword;
     } catch (error: any) {
-      // Tratamento de erro para email duplicado
       if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
         throw new ConflictException('Email já está em uso');
       }
@@ -169,15 +163,13 @@ export class UsersService {
         throw new NotFoundException('Usuário não encontrado');
       }
 
-      // Remove password from response
       const { password: _, ...userWithoutPassword } = updatedUser;
       return userWithoutPassword;
     } catch (error: any) {
-      // Tratamento de erro para email duplicado
       if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
         throw new ConflictException('Email já está em uso');
       }
-      // Tratamento de erro para registro não encontrado
+
       if (error.code === 'P2025') {
         throw new NotFoundException('Usuário não encontrado');
       }
